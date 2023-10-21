@@ -1,0 +1,4 @@
+CompileFlags:
+  Add:
+    - "--include-directory=C:/Users/Jackson levine/Documents/vcpkg/installed/x64-windows/include"
+    - "-std=c++20"
