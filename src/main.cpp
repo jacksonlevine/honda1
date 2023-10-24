@@ -1,4 +1,3 @@
-#pragma once
 #include <iostream>
 #include <format>
 #include <GL/glew.h>
@@ -10,6 +9,9 @@
 #include <functional>
 #include <sstream>
 #include <fstream>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 
 //WINDOW
 GLFWwindow* WINDOW;
@@ -32,6 +34,9 @@ glm::vec3 CAMERA_DIRECTION(0.0f, 0.0f, 1.0f);
 //SHADERS
 GLuint SHADER_1;
 
+//TEXTURES
+GLuint TEXTURE_SHEET;
+
 //3D MATH
 glm::mat4 MODEL(1.0f);
 glm::mat4 PROJECTION(
@@ -48,6 +53,7 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 int load_text (const char *fp, std::string &out);
 int create_window(const char *title);
 int create_shader_program(GLuint* prog, const char* vfp, const char* ffp);
+int prepare_texture(GLuint *tptr, const char *tpath);
 
 int INPUT_FORWARD = 0;
 int INPUT_LEFT = 0;
@@ -67,14 +73,17 @@ std::map<int, int*> KEY_BINDS = {
 
 int main() {
     if(!create_window("Honda 1")) {
-        std::cerr << "Could not create window." << std::endl;
+        std::cerr << "Honda 1 window create err" << std::endl;
+        return EXIT_FAILURE;
+    }
+    if(!prepare_texture(&TEXTURE_SHEET, "src/assets/texture.png")) {
         return EXIT_FAILURE;
     }
     if(!create_shader_program( 
         &SHADER_1, 
         "src/assets/vertex.glsl", 
         "src/assets/fragment.glsl")) {
-        std::cerr << "Could not create shader program." << std::endl;
+        std::cerr << "Create SHADER_1 err" << std::endl;
         return EXIT_FAILURE;
     }
     
@@ -151,17 +160,17 @@ int create_shader_program(GLuint* prog, const char* vfp, const char* ffp) {
     std::string vertexText;
     std::string fragText;
     if(!load_text(vfp, vertexText)) {
-        std::cerr << "Could not load vertex shader file!" << std::endl;
+        std::cerr << "Missing/could not load vert shade file" << std::endl;
         return -1;
     }
     if(!load_text(ffp, fragText)) {
-        std::cerr << "Could not load fragment shader file!" << std::endl;
+        std::cerr << "Missing/could not load frag shade file" << std::endl;
         return -1;
     }
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
     GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
     const GLchar *vertexGLChars = vertexText.c_str();
-    const GLchar *fragGLChars = vertexText.c_str();
+    const GLchar *fragGLChars = fragText.c_str();
     glShaderSource(vertexShader, 1, &vertexGLChars, NULL);
     glCompileShader(vertexShader);
     glShaderSource(fragmentShader, 1, &fragGLChars, NULL);
@@ -171,13 +180,13 @@ int create_shader_program(GLuint* prog, const char* vfp, const char* ffp) {
     glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
     if (!success) {
         glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-        std::cerr << "Vertex shader compilation error: " << infoLog << std::endl;
+        std::cerr << "Vert shade comp err: " << infoLog << std::endl;
         return -1;
     }
     glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
     if (!success) {
         glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-        std::cerr << "Fragment shader compilation error: " << infoLog << std::endl;
+        std::cerr << "Frag shade comp err: " << infoLog << std::endl;
         return -1;
     }
     *prog = glCreateProgram();
@@ -187,7 +196,7 @@ int create_shader_program(GLuint* prog, const char* vfp, const char* ffp) {
     glGetProgramiv(*prog, GL_LINK_STATUS, &success);
     if (!success) {
         glGetProgramInfoLog(*prog, 512, NULL, infoLog);
-        std::cerr << "Shader program linking error: " << infoLog << std::endl;
+        std::cerr << "Shade prog link err: " << infoLog << std::endl;
         return -1;
     }
     glDeleteShader(vertexShader);
@@ -207,12 +216,12 @@ int load_text (const char *fp, std::string &out) {
 
 int create_window(const char *title) {
     if (!glfwInit()) {
-        std::cerr << "Failed to initialize GLFW" << std::endl;
+        std::cerr << "GLFW init err" << std::endl;
         return -1;
     }
     WINDOW = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, title, NULL, NULL);
     if (!WINDOW) {
-        std::cerr << "Failed to create GLFW window" << std::endl;
+        std::cerr << "GLFW window err" << std::endl;
         glfwTerminate();
         return -1;
     }
@@ -222,7 +231,7 @@ int create_window(const char *title) {
     glfwSetMouseButtonCallback(WINDOW, mouse_button_callback);
     glfwSetKeyCallback(WINDOW, key_callback);
     if (glewInit() != GLEW_OK) {
-        std::cerr << "Failed to initialize GLEW" << std::endl;
+        std::cerr << "Initialize GLEW err" << std::endl;
         glfwTerminate();
         return EXIT_FAILURE;
     }
@@ -233,4 +242,82 @@ int create_window(const char *title) {
     glFrontFace(GL_CW);
     glDepthFunc(GL_LESS);
     return 1;
+}
+
+int prepare_texture(GLuint *tptr, const char *tpath)
+{
+    glGenTextures(1, tptr);
+    glBindTexture(GL_TEXTURE_2D, *tptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    int width, height, nrChannels;
+    unsigned char *data = stbi_load(tpath, &width, &height, &nrChannels, 0);
+    if (data)
+    {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        stbi_image_free(data);
+        return 1;
+    }
+    else
+    {
+        std::cout << "Prepare_texture fail err" << std::endl;
+        stbi_image_free(data);
+        return -1;
+    }
+    return -1;
+}
+
+void bindGeometry(GLuint vbov, GLuint vboc, GLuint vbouv, const GLfloat *vertices, const GLfloat *colors, const GLfloat *uv, int vsize, int csize, int usize)
+{
+    GLenum error;
+    glBindBuffer(GL_ARRAY_BUFFER, vbov);
+    glBufferData(GL_ARRAY_BUFFER, vsize, vertices, GL_STATIC_DRAW);
+    error = glGetError();
+    if (error != GL_NO_ERROR)
+    {
+        std::cerr << "Bind geom err (vbov): " << error << std::endl;
+    }
+    GLint pos_attrib = glGetAttribLocation(SHADER_1, "position");
+    glEnableVertexAttribArray(pos_attrib);
+    glVertexAttribPointer(pos_attrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, vboc);
+    glBufferData(GL_ARRAY_BUFFER, csize, colors, GL_STATIC_DRAW);
+    error = glGetError();
+    if (error != GL_NO_ERROR)
+    {
+        std::cerr << "Bind geom err (vboc): " << error << std::endl;
+    }
+    GLint col_attrib = glGetAttribLocation(SHADER_1, "color");
+    glEnableVertexAttribArray(col_attrib);
+    glVertexAttribPointer(col_attrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, vbouv);
+    glBufferData(GL_ARRAY_BUFFER, usize, uv, GL_STATIC_DRAW);
+    error = glGetError();
+    if (error != GL_NO_ERROR)
+    {
+        std::cerr << "Bind geom err (vbouv): " << error << std::endl;
+    }
+    GLint uv_attrib = glGetAttribLocation(SHADER_1, "uv");
+    glEnableVertexAttribArray(uv_attrib);
+    glVertexAttribPointer(uv_attrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
+}
+
+void bindGeometryNoUpload(GLuint vbov, GLuint vboc, GLuint vbouv)
+{
+    glBindBuffer(GL_ARRAY_BUFFER, vbov);
+    GLint pos_attrib = glGetAttribLocation(SHADER_1, "position");
+    glEnableVertexAttribArray(pos_attrib);
+    glVertexAttribPointer(pos_attrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, vboc);
+    GLint col_attrib = glGetAttribLocation(SHADER_1, "color");
+    glEnableVertexAttribArray(col_attrib);
+    glVertexAttribPointer(col_attrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, vbouv);
+    GLint uv_attrib = glGetAttribLocation(SHADER_1, "uv");
+    glEnableVertexAttribArray(uv_attrib);
+    glVertexAttribPointer(uv_attrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
 }
