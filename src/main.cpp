@@ -77,14 +77,18 @@ int main() {
         return EXIT_FAILURE;
     }
     if(!prepare_texture(&TEXTURE_SHEET, "src/assets/texture.png")) {
+        std::cerr << "Couldn't find or load texture." << std::endl;
         return EXIT_FAILURE;
     }
-    if(!create_shader_program( 
+    if(!create_shader_program(
         &SHADER_1, 
         "src/assets/vertex.glsl", 
         "src/assets/fragment.glsl")) {
         std::cerr << "Create SHADER_1 err" << std::endl;
         return EXIT_FAILURE;
+    }
+    while(!glfwWindowShouldClose(WINDOW)) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
     
     return EXIT_SUCCESS;
