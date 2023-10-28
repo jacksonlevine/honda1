@@ -17,6 +17,16 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+enum GameState {
+    BEGIN_MENU,
+    BEGIN_SETTINGS,
+    GAME_ACTIVE,
+    GAME_SETTINGS,
+};
+
+GameState VISIBLE_STATE = BEGIN_MENU;
+
+
 //WINDOW
 GLFWwindow* WINDOW;
 int WINDOW_WIDTH = 1280;
@@ -52,6 +62,7 @@ GLuint SHADER_1;
 
 //TEXTURES
 GLuint TEXTURE_SHEET;
+int FONT_SIZE = 24;
 
 //VAO
 GLuint VERTEX_ARRAY_OBJECT;
@@ -62,15 +73,17 @@ glm::mat4 PROJECTION(
     glm::perspective(
         glm::radians(FOV), 
         static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT),
-        0.1f, 
+        0.01f, 
         1000.0f));
 glm::mat4 VIEW(0.0f);
 glm::mat4 MVP(0.0f);
 
-
+//CALLBACKS FOR GL
 void mouse_callback(GLFWwindow *window, double xpos, double ypos);
 void mouse_button_callback(GLFWwindow *window, int button, int action, int mods);
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods);
+void framebuffer_size_callback(GLFWwindow* window, int width, int height);
+
 int load_text (const char *fp, std::string &out);
 int create_window(const char *title);
 int create_shader_program(GLuint* prog, const char* vfp, const char* ffp);
@@ -133,11 +146,7 @@ int main() {
         static GLuint vboc = 0;
         static GLuint vbouv = 0;
 
-        if(vbov == 0) {
-            glGenBuffers(1, &vbov);
-            glGenBuffers(1, &vboc);
-            glGenBuffers(1, &vbouv);
-        }
+        
 
         std::vector<GLfloat> verts = {
             0.0f, -8.0f, 0.0f,
@@ -167,15 +176,25 @@ int main() {
             0.0f, 0.0f,
         };
 
-        bind_geometry(
+        if(vbov == 0) {
+            glGenBuffers(1, &vbov);
+            glGenBuffers(1, &vboc);
+            glGenBuffers(1, &vbouv);
+
+            bind_geometry(
             vbov, vboc, vbouv, 
             verts.data(), cols.data(), uvs.data(), 
             verts.size()*sizeof(GLfloat),
             cols.size()*sizeof(GLfloat),
             uvs.size()*sizeof(GLfloat));
+        } else {
+            bind_geometry_no_upload(vbov, vboc, vbouv);
+        }
+
+        
 
         glDrawArrays(GL_TRIANGLES, 0, verts.size());
-
+        glBindVertexArray(0);
         rend_imgui();
 
         glfwSwapBuffers(WINDOW);
@@ -211,6 +230,11 @@ void rend_imgui() {
 
     ImGui::Text("Honda v0.0.0");
 
+    ImGui::End();
+    ImGui::Begin("Test Window");
+    ImGui::Button("Hello");
+
+
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -220,6 +244,10 @@ void init_imgui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
+    io.Fonts->AddFontFromFileTTF("src/assets/fonts/mimos1.otf", FONT_SIZE);
+    io.Fonts->Build();
+    io.FontDefault = io.Fonts->Fonts[0];
+
 
     ImGui_ImplGlfw_InitForOpenGL(WINDOW, true);
 
@@ -405,6 +433,7 @@ int create_window(const char *title) {
     glfwSetInputMode(WINDOW, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetCursorPosCallback(WINDOW, mouse_callback);
     glfwSetMouseButtonCallback(WINDOW, mouse_button_callback);
+    glfwSetFramebufferSizeCallback(WINDOW, framebuffer_size_callback);
     glfwSetKeyCallback(WINDOW, key_callback);
     if (glewInit() != GLEW_OK) {
         std::cerr << "Initialize GLEW err" << std::endl;
@@ -496,4 +525,18 @@ void bind_geometry_no_upload(GLuint vbov, GLuint vboc, GLuint vbouv)
     GLint uv_attrib = glGetAttribLocation(SHADER_1, "uv");
     glEnableVertexAttribArray(uv_attrib);
     glVertexAttribPointer(uv_attrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
+}
+
+void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+    WINDOW_WIDTH = width;
+    WINDOW_HEIGHT = height;
+    glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+    PROJECTION = glm::perspective(
+    glm::radians(FOV), 
+    static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT),
+    0.01f, 
+    1000.0f);
+    MVP = PROJECTION * VIEW * MODEL;
+    GLuint mvp_loc = glGetUniformLocation(SHADER_1, "mvp");
+    glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(MVP));
 }
