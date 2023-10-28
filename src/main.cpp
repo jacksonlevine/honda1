@@ -1,5 +1,4 @@
 #include <iostream>
-#include <format>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -9,6 +8,11 @@
 #include <functional>
 #include <sstream>
 #include <fstream>
+
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -20,22 +24,37 @@ int WINDOW_HEIGHT = 720;
 float FOV = 90;
 
 //MOUSE
-int LAST_MOUSE_X = 0;
-int LAST_MOUSE_Y = 0;
+double LAST_MOUSE_X = 0;
+double LAST_MOUSE_Y = 0;
 bool FIRST_MOUSE = false;
 bool MOUSE_CAPTURED = false;
 float MOUSE_SENSITIVITY = 0.1f;
 
 //CAMERA
-float CAMERA_YAW = 0.0f;
-float CAMERA_PITCH = 0.0f;
+double CAMERA_YAW = 0.0f;
+double CAMERA_PITCH = 0.0f;
 glm::vec3 CAMERA_DIRECTION(0.0f, 0.0f, 1.0f);
+glm::vec3 CAMERA_POSITION(0.0f, 0.0f, 0.0f);
+glm::vec3 CAMERA_RIGHT(1.0f, 0.0f, 0.0f);
+glm::vec3 CAMERA_UP(0.0f, 1.0f, 0.0f);
+
+
+//GENERAL FACTS
+glm::vec3 UP(0.0f, 1.0f, 0.0f);
+int FACE_WINDING = GL_CCW; //Clockwise if you're looking at the shape.
+
+//TIME
+double DELTA_TIME = 0;
+double LAST_FRAME = 0;
 
 //SHADERS
 GLuint SHADER_1;
 
 //TEXTURES
 GLuint TEXTURE_SHEET;
+
+//VAO
+GLuint VERTEX_ARRAY_OBJECT;
 
 //3D MATH
 glm::mat4 MODEL(1.0f);
@@ -45,6 +64,8 @@ glm::mat4 PROJECTION(
         static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT),
         0.1f, 
         1000.0f));
+glm::mat4 VIEW(0.0f);
+glm::mat4 MVP(0.0f);
 
 
 void mouse_callback(GLFWwindow *window, double xpos, double ypos);
@@ -54,6 +75,13 @@ int load_text (const char *fp, std::string &out);
 int create_window(const char *title);
 int create_shader_program(GLuint* prog, const char* vfp, const char* ffp);
 int prepare_texture(GLuint *tptr, const char *tpath);
+void send_shader_1_uniforms();
+void update_time();
+void bind_geometry(GLuint vbov, GLuint vboc, GLuint vbouv, const GLfloat *vertices, const GLfloat *colors, const GLfloat *uv, size_t vsize, size_t csize, size_t usize);
+void bind_geometry_no_upload(GLuint vbov, GLuint vboc, GLuint vbouv);
+
+void rend_imgui();
+void init_imgui();
 
 int INPUT_FORWARD = 0;
 int INPUT_LEFT = 0;
@@ -87,11 +115,124 @@ int main() {
         std::cerr << "Create SHADER_1 err" << std::endl;
         return EXIT_FAILURE;
     }
+    init_imgui();
+
+    //1 vao and shader for now
+    glGenVertexArrays(1, &VERTEX_ARRAY_OBJECT);
+    glBindVertexArray(VERTEX_ARRAY_OBJECT);
+    glUseProgram(SHADER_1);
+    glClearColor(0.3f, 0.5f, 0.8f, 1.0f);
     while(!glfwWindowShouldClose(WINDOW)) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        send_shader_1_uniforms();
+
+        static GLuint vbov = 0;
+        static GLuint vboc = 0;
+        static GLuint vbouv = 0;
+
+        if(vbov == 0) {
+            glGenBuffers(1, &vbov);
+            glGenBuffers(1, &vboc);
+            glGenBuffers(1, &vbouv);
+        }
+
+        std::vector<GLfloat> verts = {
+            0.0f, -8.0f, 0.0f,
+            0.0f, -8.0f, 5.0f,
+            5.0f, -8.0f, 5.0f,
+
+            5.0f, -8.0f, 5.0f,
+            5.0f, -8.0f, -1.0f,
+            0.0f, -8.0f, 0.0f,
+        };
+        std::vector<GLfloat> cols = {
+            1.0f, 1.0f, 1.0f,
+            1.0f, 1.0f, 1.0f,
+            1.0f, 1.0f, 1.0f,
+
+            1.0f, 1.0f, 1.0f,
+            1.0f, 1.0f, 1.0f,
+            1.0f, 1.0f, 1.0f,
+        };
+        std::vector<GLfloat> uvs = {
+            0.0f, 0.0f,
+            0.0f, 1.0f,
+            1.0f, 1.0f,
+            
+            1.0f, 1.0f,
+            1.0f, 0.0f,
+            0.0f, 0.0f,
+        };
+
+        bind_geometry(
+            vbov, vboc, vbouv, 
+            verts.data(), cols.data(), uvs.data(), 
+            verts.size()*sizeof(GLfloat),
+            cols.size()*sizeof(GLfloat),
+            uvs.size()*sizeof(GLfloat));
+
+        glDrawArrays(GL_TRIANGLES, 0, verts.size());
+
+        rend_imgui();
+
+        glfwSwapBuffers(WINDOW);
+
+        glfwPollEvents();
+
+        update_time();
+
     }
-    
+
+    glfwTerminate();
+
     return EXIT_SUCCESS;
+}
+
+void rend_imgui() {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2(0, 0));
+    ImGui::Begin("HiddenWindow", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
+
+
+    ImGui::Text("Honda v0.0.0");
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+}
+
+void init_imgui() {
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+
+    ImGui_ImplGlfw_InitForOpenGL(WINDOW, true);
+
+    ImGui_ImplOpenGL3_Init("#version 330");
+}
+
+void update_time() {
+    double current_frame = glfwGetTime();
+    DELTA_TIME = current_frame - LAST_FRAME;
+    LAST_FRAME = current_frame;
+}
+
+void send_shader_1_uniforms() {
+    int uw_v = 0;
+
+    GLuint mvp_loc = glGetUniformLocation(SHADER_1, "mvp");
+    glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(MVP));
+
+    GLuint cam_pos_loc = glGetUniformLocation(SHADER_1, "camPos");
+    glUniform3f(cam_pos_loc, CAMERA_POSITION.x, CAMERA_POSITION.y, CAMERA_POSITION.z);
+
+    GLuint uw_loc = glGetUniformLocation(SHADER_1, "underWater");
+    glUniform1i(uw_loc, uw_v);
 }
 
 
@@ -105,8 +246,8 @@ void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
             FIRST_MOUSE = false;
         }
 
-        float xoffset = xpos - LAST_MOUSE_X;
-        float yoffset = LAST_MOUSE_Y - ypos;
+        double xoffset = xpos - LAST_MOUSE_X;
+        double yoffset = LAST_MOUSE_Y - ypos;
 
         xoffset *= MOUSE_SENSITIVITY;
         yoffset *= MOUSE_SENSITIVITY;
@@ -121,19 +262,31 @@ void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
             CAMERA_PITCH = -89.0f;
         }
 
-        CAMERA_DIRECTION.x = cos(glm::radians(CAMERA_YAW)) * cos(glm::radians(CAMERA_PITCH));
-        CAMERA_DIRECTION.y = sin(glm::radians(CAMERA_PITCH));
-        CAMERA_DIRECTION.z = sin(glm::radians(CAMERA_YAW)) * cos(glm::radians(CAMERA_PITCH));
+        CAMERA_DIRECTION.x = static_cast<float>(cos(glm::radians(CAMERA_YAW)) * cos(glm::radians(CAMERA_PITCH)));
+        CAMERA_DIRECTION.y = static_cast<float>(sin(glm::radians(CAMERA_PITCH)));
+        CAMERA_DIRECTION.z = static_cast<float>(sin(glm::radians(CAMERA_YAW)) * cos(glm::radians(CAMERA_PITCH)));
         CAMERA_DIRECTION = glm::normalize(CAMERA_DIRECTION);
 
         LAST_MOUSE_X = xpos;
         LAST_MOUSE_Y = ypos;
+
+
+        CAMERA_RIGHT = glm::normalize(glm::cross(UP, CAMERA_DIRECTION));
+        CAMERA_UP = glm::cross(CAMERA_DIRECTION, CAMERA_RIGHT);
+
+        VIEW = glm::lookAt(CAMERA_POSITION, CAMERA_POSITION + CAMERA_DIRECTION, CAMERA_UP);
+
+        MVP = PROJECTION * VIEW * MODEL;
     }
 }
 
 
 void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
 {
+    if (ImGui::GetIO().WantCaptureMouse) {
+        // ImGui is active, so don't handle the mouse event here
+        return;
+    }
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
     {
         if (!MOUSE_CAPTURED)
@@ -154,9 +307,18 @@ void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
 }
 
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods) {
+    if (ImGui::GetIO().WantCaptureKeyboard) {
+        return;
+    }
     if(KEY_BINDS.find(key) != KEY_BINDS.end())
     {
         *KEY_BINDS[key] = action;
+    }
+    if (key == GLFW_KEY_ESCAPE)
+    {
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        FIRST_MOUSE = true;
+        MOUSE_CAPTURED = false;
     }
 }
 
@@ -243,7 +405,7 @@ int create_window(const char *title) {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
-    glFrontFace(GL_CW);
+    glFrontFace(FACE_WINDING);
     glDepthFunc(GL_LESS);
     return 1;
 }
@@ -275,7 +437,7 @@ int prepare_texture(GLuint *tptr, const char *tpath)
     return -1;
 }
 
-void bindGeometry(GLuint vbov, GLuint vboc, GLuint vbouv, const GLfloat *vertices, const GLfloat *colors, const GLfloat *uv, int vsize, int csize, int usize)
+void bind_geometry(GLuint vbov, GLuint vboc, GLuint vbouv, const GLfloat *vertices, const GLfloat *colors, const GLfloat *uv, size_t vsize, size_t csize, size_t usize)
 {
     GLenum error;
     glBindBuffer(GL_ARRAY_BUFFER, vbov);
@@ -310,7 +472,7 @@ void bindGeometry(GLuint vbov, GLuint vboc, GLuint vbouv, const GLfloat *vertice
     glVertexAttribPointer(uv_attrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
 }
 
-void bindGeometryNoUpload(GLuint vbov, GLuint vboc, GLuint vbouv)
+void bind_geometry_no_upload(GLuint vbov, GLuint vboc, GLuint vbouv)
 {
     glBindBuffer(GL_ARRAY_BUFFER, vbov);
     GLint pos_attrib = glGetAttribLocation(SHADER_1, "position");
