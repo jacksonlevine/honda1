@@ -79,6 +79,7 @@ void send_shader_1_uniforms();
 void update_time();
 void bind_geometry(GLuint vbov, GLuint vboc, GLuint vbouv, const GLfloat *vertices, const GLfloat *colors, const GLfloat *uv, size_t vsize, size_t csize, size_t usize);
 void bind_geometry_no_upload(GLuint vbov, GLuint vboc, GLuint vbouv);
+void react_to_input();
 
 void rend_imgui();
 void init_imgui();
@@ -121,8 +122,9 @@ int main() {
     glGenVertexArrays(1, &VERTEX_ARRAY_OBJECT);
     glBindVertexArray(VERTEX_ARRAY_OBJECT);
     glUseProgram(SHADER_1);
-    glClearColor(0.3f, 0.5f, 0.8f, 1.0f);
+
     while(!glfwWindowShouldClose(WINDOW)) {
+        react_to_input();
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         send_shader_1_uniforms();
@@ -187,6 +189,14 @@ int main() {
     glfwTerminate();
 
     return EXIT_SUCCESS;
+}
+
+void react_to_input() {
+    if(INPUT_FORWARD) {
+        CAMERA_POSITION += CAMERA_DIRECTION * (0.001f + static_cast<float>(DELTA_TIME));
+        VIEW = glm::lookAt(CAMERA_POSITION, CAMERA_POSITION + CAMERA_DIRECTION, CAMERA_UP);
+        MVP = PROJECTION * VIEW * MODEL;
+    }
 }
 
 void rend_imgui() {
