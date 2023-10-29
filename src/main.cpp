@@ -62,7 +62,7 @@ GLuint SHADER_1;
 
 //TEXTURES
 GLuint TEXTURE_SHEET;
-int FONT_SIZE = 24;
+int FONT_SIZE = 20;
 
 //VAO
 GLuint VERTEX_ARRAY_OBJECT;
@@ -231,9 +231,13 @@ void rend_imgui() {
     ImGui::Text("Honda v0.0.0");
 
     ImGui::End();
-    ImGui::Begin("Test Window");
+    ImGui::Begin("Test Window", NULL,  ImGuiWindowFlags_NoBackground);
     ImGui::Button("Hello");
 
+    static char buf[512];
+    ImGui::InputTextMultiline("Text Test", buf, 512, ImVec2(300, 100));
+    static float slide = 0.0f;
+    ImGui::SliderFloat("Slider Test", &slide, 0.0f, 100.0f);
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
