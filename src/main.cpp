@@ -9,13 +9,35 @@
 #include <sstream>
 #include <fstream>
 
+
+
+
+#define NS_PRIVATE_IMPLEMENTATION
+#define CA_PRIVATE_IMPLEMENTATION
+#define MTL_PRIVATE_IMPLEMENTATION
+#include <Foundation/Foundation.hpp>
+#include <Metal/Metal.hpp>
+#include <QuartzCore/QuartzCore.hpp>
+
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "imgui_impl_metal.h"
 
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+
+
+
+
+
+
+
+
+
+
+
 
 enum GameState {
     BEGIN_MENU,
@@ -29,6 +51,7 @@ GameState VISIBLE_STATE = BEGIN_MENU;
 
 //WINDOW
 GLFWwindow* WINDOW;
+
 int WINDOW_WIDTH = 1280;
 int WINDOW_HEIGHT = 720;
 float FOV = 90;
@@ -51,7 +74,7 @@ glm::vec3 CAMERA_UP(0.0f, 1.0f, 0.0f);
 
 //GENERAL FACTS
 glm::vec3 UP(0.0f, 1.0f, 0.0f);
-int FACE_WINDING = GL_CCW; //Clockwise if you're looking at the shape.
+int FACE_WINDING = GL_CW; //Clockwise if you're looking at the shape.
 
 //TIME
 double DELTA_TIME = 0;
@@ -131,11 +154,11 @@ int main() {
     }
     init_imgui();
 
+    glClearColor(0.0f, 0.0f, 1.0f, 1.0f);
     //1 vao and shader for now
     glGenVertexArrays(1, &VERTEX_ARRAY_OBJECT);
     glBindVertexArray(VERTEX_ARRAY_OBJECT);
     glUseProgram(SHADER_1);
-
     while(!glfwWindowShouldClose(WINDOW)) {
         react_to_input();
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -238,7 +261,7 @@ void rend_imgui() {
     ImGui::InputTextMultiline("Text Test", buf, 512, ImVec2(300, 100));
     static float slide = 0.0f;
     ImGui::SliderFloat("Slider Test", &slide, 0.0f, 100.0f);
-
+    ImGui::End();
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -315,7 +338,7 @@ void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
 
         CAMERA_RIGHT = glm::normalize(glm::cross(UP, CAMERA_DIRECTION));
         CAMERA_UP = glm::cross(CAMERA_DIRECTION, CAMERA_RIGHT);
-
+        std::cout << "Direction: " << CAMERA_DIRECTION.x << std::endl;
         VIEW = glm::lookAt(CAMERA_POSITION, CAMERA_POSITION + CAMERA_DIRECTION, CAMERA_UP);
 
         MVP = PROJECTION * VIEW * MODEL;
@@ -423,10 +446,23 @@ int load_text (const char *fp, std::string &out) {
 }
 
 int create_window(const char *title) {
+
+    //OLDER OPENGL
     if (!glfwInit()) {
         std::cerr << "GLFW init err" << std::endl;
         return -1;
     }
+
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    #ifdef __APPLE__  
+    std::cout << "I'm apple machine" << std::endl;
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+    #endif
+
+    
+
     WINDOW = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, title, NULL, NULL);
     if (!WINDOW) {
         std::cerr << "GLFW window err" << std::endl;

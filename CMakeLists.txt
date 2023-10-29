@@ -9,7 +9,17 @@ add_executable(main src/main.cpp)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+
+
 target_include_directories(main PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(main PUBLIC ${CMAKE_SOURCE_DIR}/include/metal-cpp)
+if(APPLE)
+target_link_libraries(main PRIVATE 
+    "-framework Foundation"
+    "-framework Metal"
+    "-framework QuartzCore"
+)
+endif()
 
 find_package(imgui CONFIG REQUIRED)
 target_link_libraries(main PRIVATE imgui::imgui)
