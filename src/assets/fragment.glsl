@@ -4,7 +4,7 @@ in vec2 TexCoord;
 out vec4 FragColor;
 uniform sampler2D ourTexture;
 uniform vec3 camPos;
-uniform int underWater;
+uniform float brightness;
 void main()
 {
 
@@ -17,16 +17,13 @@ void main()
     vec3 fogColor = vec3(0.2, 0.2, 0.7);
     float diss = pow(gl_FragCoord.z, 2);
 
-    if(underWater == 0) {
-        if(gl_FragCoord.z < 0.9978f) { 
-            diss = 0; 
-        } else { 
-            diss = (diss-0.9978f)*1000; 
-        }
+    if(gl_FragCoord.z < 0.9978f) { 
+        diss = 0; 
     } else { 
-        diss = (diss-0.6)*4; 
+        diss = (diss-0.9978f)*1000; 
     }
 
+
     vec3 finalColor = mix(vertexColor, fogColor, max(diss/4.0, 0));
-    FragColor = mix(vec4(finalColor, 1.0) * texColor, vec4(fogColor, 1.0), max(diss/4.0, 0));
+    FragColor = mix(vec4(finalColor, 1.0) * texColor, vec4(fogColor, 1.0), max(diss/4.0, 0)) * brightness;
 }

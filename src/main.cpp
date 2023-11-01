@@ -17,6 +17,12 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#define PERLIN_IMP
+#include "perlin.h"
+
+#define TEXTUREFACE_IMP
+#include "textureface.hpp"
+
 enum GameState {
     BEGIN_MENU,
     BEGIN_SETTINGS,
@@ -48,6 +54,9 @@ glm::vec3 CAMERA_POSITION(0.0f, 0.0f, 0.0f);
 glm::vec3 CAMERA_RIGHT(1.0f, 0.0f, 0.0f);
 glm::vec3 CAMERA_UP(0.0f, 1.0f, 0.0f);
 
+//GAME-RELATED THINGS?
+float GLOBAL_BRIGHTNESS = 1.0;
+Perlin p;
 
 //GENERAL FACTS
 glm::vec3 UP(0.0f, 1.0f, 0.0f);
@@ -90,8 +99,8 @@ int create_shader_program(GLuint* prog, const char* vfp, const char* ffp);
 int prepare_texture(GLuint *tptr, const char *tpath);
 void send_shader_1_uniforms();
 void update_time();
-void bind_geometry(GLuint vbov, GLuint vboc, GLuint vbouv, const GLfloat *vertices, const GLfloat *colors, const GLfloat *uv, size_t vsize, size_t csize, size_t usize);
-void bind_geometry_no_upload(GLuint vbov, GLuint vboc, GLuint vbouv);
+void bind_geometry(GLuint vbov, GLuint vbouv, const GLfloat *vertices, const GLfloat *uv, size_t vsize, size_t usize);
+void bind_geometry_no_upload(GLuint vbov, GLuint vbouv);
 void react_to_input();
 
 void rend_imgui();
@@ -112,6 +121,22 @@ std::map<int, int*> KEY_BINDS = {
     {GLFW_KEY_SPACE, &INPUT_JUMP},
 };
 
+void grid(int xstride, int zstride, float step, glm::vec3 center, std::function<void(float,float,float)> func) {
+    for(float i = center.x - xstride/2; i < center.x + xstride/2; i+=step)
+    {
+        for(float k = center.z - zstride/2; k < center.z + zstride/2; k+=step)
+        {
+            func(i, k, step);
+        }
+    }
+}
+
+float noise_wrap(float x, float z) {
+    float divider = 20.3f;
+    float multiplier = 20.0f;
+    return static_cast<float>(p.noise(x/divider, z/divider)) * multiplier;
+}
+
 
 int main() {
     if(!create_window("Honda 1")) {
@@ -131,6 +156,8 @@ int main() {
     }
     init_imgui();
 
+    TextureFace stone(0,0);
+
     //1 vao and shader for now
     glGenVertexArrays(1, &VERTEX_ARRAY_OBJECT);
     glBindVertexArray(VERTEX_ARRAY_OBJECT);
@@ -142,59 +169,59 @@ int main() {
 
         send_shader_1_uniforms();
 
-        static GLuint vbov = 0;
-        static GLuint vboc = 0;
-        static GLuint vbouv = 0;
+                    static GLuint vbov = 0;
+                    static GLuint vbouv = 0;
+                    static glm::vec3 last_cam_pos;
 
-        
+                    std::vector<GLfloat> verts;
+                    std::vector<GLfloat> uvs;
 
-        std::vector<GLfloat> verts = {
-            0.0f, -8.0f, 0.0f,
-            0.0f, -8.0f, 5.0f,
-            5.0f, -8.0f, 5.0f,
+                    grid(120, 120, 5, CAMERA_POSITION, [&verts, &uvs, &stone](float i, float k, float step){
+                         verts.insert(verts.end(), {
+                                i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f) ,k-step/2.0f,
+                                i-step/2.0f, noise_wrap(i-step/2.0f, k+step/2.0f) ,k+step/2.0f,
+                                i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f) ,k+step/2.0f,
 
-            5.0f, -8.0f, 5.0f,
-            5.0f, -8.0f, -1.0f,
-            0.0f, -8.0f, 0.0f,
-        };
-        std::vector<GLfloat> cols = {
-            1.0f, 1.0f, 1.0f,
-            1.0f, 1.0f, 1.0f,
-            1.0f, 1.0f, 1.0f,
+                                i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f) ,k+step/2.0f,
+                                i+step/2.0f, noise_wrap(i+step/2.0f, k-step/2.0f) ,k-step/2.0f,
+                                i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f) ,k-step/2.0f,
+                            });
 
-            1.0f, 1.0f, 1.0f,
-            1.0f, 1.0f, 1.0f,
-            1.0f, 1.0f, 1.0f,
-        };
-        std::vector<GLfloat> uvs = {
-            0.0f, 0.0f,
-            0.0f, 1.0f,
-            1.0f, 1.0f,
-            
-            1.0f, 1.0f,
-            1.0f, 0.0f,
-            0.0f, 0.0f,
-        };
+                            uvs.insert(uvs.end(), {
+                                stone.bl.x, stone.bl.y,
+                                stone.tl.x, stone.tl.y,
+                                stone.tr.x, stone.tr.y,
 
-        if(vbov == 0) {
-            glGenBuffers(1, &vbov);
-            glGenBuffers(1, &vboc);
-            glGenBuffers(1, &vbouv);
+                                stone.tr.x, stone.tr.y,
+                                stone.br.x, stone.br.y,
+                                stone.bl.x, stone.bl.y
+                            });
+                    });
 
-            bind_geometry(
-            vbov, vboc, vbouv, 
-            verts.data(), cols.data(), uvs.data(), 
-            verts.size()*sizeof(GLfloat),
-            cols.size()*sizeof(GLfloat),
-            uvs.size()*sizeof(GLfloat));
-        } else {
-            bind_geometry_no_upload(vbov, vboc, vbouv);
-        }
 
-        
 
-        glDrawArrays(GL_TRIANGLES, 0, verts.size());
-        glBindVertexArray(0);
+
+
+                    if(vbov == 0 || last_cam_pos != CAMERA_POSITION) {
+                        last_cam_pos = CAMERA_POSITION;
+                        glDeleteBuffers(1, &vbov);
+                        glDeleteBuffers(1, &vbouv);
+                        glGenBuffers(1, &vbov);
+                        glGenBuffers(1, &vbouv);
+
+                        bind_geometry(
+                        vbov, vbouv, 
+                        verts.data(), uvs.data(), 
+                        verts.size()*sizeof(GLfloat),
+                        uvs.size()*sizeof(GLfloat));
+                    } else {
+                        bind_geometry_no_upload(vbov, vbouv);
+                    }
+
+                    glDrawArrays(GL_TRIANGLES, 0, verts.size());
+                    glBindVertexArray(0);
+
+
         rend_imgui();
 
         glfwSwapBuffers(WINDOW);
@@ -202,7 +229,6 @@ int main() {
         glfwPollEvents();
 
         update_time();
-
     }
 
     glfwTerminate();
@@ -227,7 +253,6 @@ void rend_imgui() {
     ImGui::SetNextWindowSize(ImVec2(0, 0));
     ImGui::Begin("HiddenWindow", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground);
 
-
     ImGui::Text("Honda v0.0.0");
 
     ImGui::End();
@@ -236,8 +261,8 @@ void rend_imgui() {
 
     static char buf[512];
     ImGui::InputTextMultiline("Text Test", buf, 512, ImVec2(300, 100));
-    static float slide = 0.0f;
-    ImGui::SliderFloat("Slider Test", &slide, 0.0f, 100.0f);
+
+    ImGui::SliderFloat("Brightness", &GLOBAL_BRIGHTNESS, 0.0f, 1.0f);
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -265,19 +290,15 @@ void update_time() {
 }
 
 void send_shader_1_uniforms() {
-    int uw_v = 0;
-
     GLuint mvp_loc = glGetUniformLocation(SHADER_1, "mvp");
     glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(MVP));
 
     GLuint cam_pos_loc = glGetUniformLocation(SHADER_1, "camPos");
     glUniform3f(cam_pos_loc, CAMERA_POSITION.x, CAMERA_POSITION.y, CAMERA_POSITION.z);
 
-    GLuint uw_loc = glGetUniformLocation(SHADER_1, "underWater");
-    glUniform1i(uw_loc, uw_v);
+    GLuint brightness_loc = glGetUniformLocation(SHADER_1, "brightness");
+    glUniform1f(brightness_loc, GLOBAL_BRIGHTNESS);
 }
-
-
 
 
 void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
@@ -311,7 +332,6 @@ void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
 
         LAST_MOUSE_X = xpos;
         LAST_MOUSE_Y = ypos;
-
 
         CAMERA_RIGHT = glm::normalize(glm::cross(UP, CAMERA_DIRECTION));
         CAMERA_UP = glm::cross(CAMERA_DIRECTION, CAMERA_RIGHT);
@@ -480,7 +500,7 @@ int prepare_texture(GLuint *tptr, const char *tpath)
     return -1;
 }
 
-void bind_geometry(GLuint vbov, GLuint vboc, GLuint vbouv, const GLfloat *vertices, const GLfloat *colors, const GLfloat *uv, size_t vsize, size_t csize, size_t usize)
+void bind_geometry(GLuint vbov, GLuint vbouv, const GLfloat *vertices, const GLfloat *uv, size_t vsize, size_t usize)
 {
     GLenum error;
     glBindBuffer(GL_ARRAY_BUFFER, vbov);
@@ -493,16 +513,7 @@ void bind_geometry(GLuint vbov, GLuint vboc, GLuint vbouv, const GLfloat *vertic
     GLint pos_attrib = glGetAttribLocation(SHADER_1, "position");
     glEnableVertexAttribArray(pos_attrib);
     glVertexAttribPointer(pos_attrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
-    glBindBuffer(GL_ARRAY_BUFFER, vboc);
-    glBufferData(GL_ARRAY_BUFFER, csize, colors, GL_STATIC_DRAW);
-    error = glGetError();
-    if (error != GL_NO_ERROR)
-    {
-        std::cerr << "Bind geom err (vboc): " << error << std::endl;
-    }
-    GLint col_attrib = glGetAttribLocation(SHADER_1, "color");
-    glEnableVertexAttribArray(col_attrib);
-    glVertexAttribPointer(col_attrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
     glBindBuffer(GL_ARRAY_BUFFER, vbouv);
     glBufferData(GL_ARRAY_BUFFER, usize, uv, GL_STATIC_DRAW);
     error = glGetError();
@@ -515,16 +526,13 @@ void bind_geometry(GLuint vbov, GLuint vboc, GLuint vbouv, const GLfloat *vertic
     glVertexAttribPointer(uv_attrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
 }
 
-void bind_geometry_no_upload(GLuint vbov, GLuint vboc, GLuint vbouv)
+void bind_geometry_no_upload(GLuint vbov, GLuint vbouv)
 {
     glBindBuffer(GL_ARRAY_BUFFER, vbov);
     GLint pos_attrib = glGetAttribLocation(SHADER_1, "position");
     glEnableVertexAttribArray(pos_attrib);
     glVertexAttribPointer(pos_attrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
-    glBindBuffer(GL_ARRAY_BUFFER, vboc);
-    GLint col_attrib = glGetAttribLocation(SHADER_1, "color");
-    glEnableVertexAttribArray(col_attrib);
-    glVertexAttribPointer(col_attrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
     glBindBuffer(GL_ARRAY_BUFFER, vbouv);
     GLint uv_attrib = glGetAttribLocation(SHADER_1, "uv");
     glEnableVertexAttribArray(uv_attrib);
@@ -536,10 +544,10 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     WINDOW_HEIGHT = height;
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
     PROJECTION = glm::perspective(
-    glm::radians(FOV), 
-    static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT),
-    0.01f, 
-    1000.0f);
+        glm::radians(FOV), 
+        static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT),
+        0.01f, 
+        1000.0f);
     MVP = PROJECTION * VIEW * MODEL;
     GLuint mvp_loc = glGetUniformLocation(SHADER_1, "mvp");
     glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(MVP));
