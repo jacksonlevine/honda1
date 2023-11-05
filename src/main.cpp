@@ -23,6 +23,8 @@
 #define TEXTUREFACE_IMP
 #include "textureface.hpp"
 
+#include <entt/entt.hpp>
+
 enum GameState {
     BEGIN_MENU,
     BEGIN_SETTINGS,
@@ -57,6 +59,7 @@ glm::vec3 CAMERA_UP(0.0f, 1.0f, 0.0f);
 //GAME-RELATED THINGS?
 float GLOBAL_BRIGHTNESS = 1.0;
 Perlin p;
+entt::registry REGISTRY;
 
 //GENERAL FACTS
 glm::vec3 UP(0.0f, 1.0f, 0.0f);
@@ -467,6 +470,8 @@ int create_window(const char *title) {
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ZERO);
     glCullFace(GL_BACK);
     glFrontFace(FACE_WINDING);
     glDepthFunc(GL_LESS);

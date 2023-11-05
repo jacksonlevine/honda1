@@ -26,4 +26,5 @@ void main()
 
     vec3 finalColor = mix(vertexColor, fogColor, max(diss/4.0, 0));
     FragColor = mix(vec4(finalColor, 1.0) * texColor, vec4(fogColor, 1.0), max(diss/4.0, 0)) * brightness;
+    FragColor.a = diss;
 }
