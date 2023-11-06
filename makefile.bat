@@ -10,4 +10,9 @@ cmake --build . --config Release || (
 copy /Y Release\main.exe ..
 copy /Y Release\glew32.dll ..
 copy /Y Release\glfw3.dll ..
+
+cd ..
+
+ResourceHacker.exe -open main.exe -save main.exe -action addskip -res src/assets/icon.ico -mask ICONGROUP,MAINICON,
+
 pause

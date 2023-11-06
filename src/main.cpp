@@ -24,6 +24,9 @@
 #include "textureface.hpp"
 
 #include <entt/entt.hpp>
+#include <thread>
+
+
 
 enum GameState {
     BEGIN_MENU,
@@ -60,17 +63,19 @@ glm::vec3 CAMERA_UP(0.0f, 1.0f, 0.0f);
 float GLOBAL_BRIGHTNESS = 1.0;
 Perlin p;
 entt::registry REGISTRY;
+float SPEED_MULTIPLIER = 2.0f;
 
 //GENERAL FACTS
 glm::vec3 UP(0.0f, 1.0f, 0.0f);
-int FACE_WINDING = GL_CCW; //Clockwise if you're looking at the shape.
+int FACE_WINDING = GL_CW; //Clockwise if you're looking at the shape.
 
 //TIME
 double DELTA_TIME = 0;
 double LAST_FRAME = 0;
 
 //SHADERS
-GLuint SHADER_1;
+GLuint SHADER_FAR;
+GLuint SHADER_STANDARD;
 
 //TEXTURES
 GLuint TEXTURE_SHEET;
@@ -100,11 +105,15 @@ int load_text (const char *fp, std::string &out);
 int create_window(const char *title);
 int create_shader_program(GLuint* prog, const char* vfp, const char* ffp);
 int prepare_texture(GLuint *tptr, const char *tpath);
-void send_shader_1_uniforms();
+void send_SHADER_FAR_uniforms();
+void send_SHADER_STANDARD_uniforms();
+
 void update_time();
-void bind_geometry(GLuint vbov, GLuint vbouv, const GLfloat *vertices, const GLfloat *uv, size_t vsize, size_t usize);
-void bind_geometry_no_upload(GLuint vbov, GLuint vbouv);
+void bind_geometry(GLuint vbov, GLuint vbouv, const GLfloat *vertices, const GLfloat *uv, size_t vsize, size_t usize, GLuint shader);
+void bind_geometry_no_upload(GLuint vbov, GLuint vbouv, GLuint shader);
 void react_to_input();
+float noise_wrap(float x, float z);
+void grid(int xstride, int zstride, float step, glm::vec3 center, std::function<void(float,float,float)> func);
 
 void rend_imgui();
 void init_imgui();
@@ -114,6 +123,7 @@ int INPUT_LEFT = 0;
 int INPUT_RIGHT = 0;
 int INPUT_BACK = 0;
 int INPUT_JUMP = 0;
+int INPUT_SHIFT = 0;
 
 
 std::map<int, int*> KEY_BINDS = {
@@ -122,7 +132,221 @@ std::map<int, int*> KEY_BINDS = {
     {GLFW_KEY_D, &INPUT_RIGHT},
     {GLFW_KEY_S, &INPUT_BACK},
     {GLFW_KEY_SPACE, &INPUT_JUMP},
+    {GLFW_KEY_LEFT_SHIFT, &INPUT_SHIFT}
 };
+
+
+struct MeshComponent {
+public:
+    GLuint vbov;
+    GLuint vbouv;
+    int length;
+    MeshComponent();
+};
+
+MeshComponent::MeshComponent() : length(0) {
+    glGenBuffers(1, &this->vbov);
+    GLenum error1 = glGetError();
+    if (error1 != GL_NO_ERROR) {
+        std::cerr << "OpenGL error after glGenBuffers vbov: " << error1 << std::endl;
+    }
+
+    glGenBuffers(1, &this->vbouv);
+    GLenum error3 = glGetError();
+    if (error3 != GL_NO_ERROR) {
+        std::cerr << "OpenGL error after glGenBuffers vbouv: " << error3 << std::endl;
+    }
+}
+
+
+#define BLOCKCHUNKWIDTH 16
+#define BLOCKCHUNKHEIGHT 64
+
+
+class BlockChunk {
+public:
+    entt::entity me;
+    int nuggo_pool_index;
+    glm::ivec2 position;
+    void rebuild();
+    void move_to(glm::ivec2 newpos);
+    BlockChunk();
+};
+
+std::vector<BlockChunk> CHUNKS;
+
+class Nuggo {
+public:
+    std::vector<GLfloat> verts;
+    std::vector<GLfloat> uvs;
+    entt::entity me;
+};
+
+std::vector<Nuggo> chunks_to_rebuild;
+
+
+std::vector<Nuggo> NUGGO_POOL;
+
+BlockChunk::BlockChunk() {
+    this->me = REGISTRY.create();
+    this->nuggo_pool_index = NUGGO_POOL.size();
+    Nuggo myNuggo;
+    myNuggo.me = me;
+    NUGGO_POOL.push_back(myNuggo);
+}
+
+void BlockChunk::move_to(glm::ivec2 newpos) {
+    this->position = newpos;
+}
+
+enum CubeFace {
+    LEFT = 0, RIGHT, FORWARD, BACK, TOP, BOTTOM
+};
+
+enum BlockTypes {
+    STONE, GRASS
+};
+
+TextureFace BlockTextures[2] = {
+    TextureFace(0,0),
+    TextureFace(1,0)
+};
+
+const glm::vec3 faces[6][6] = {
+    
+    {
+        glm::vec3(-0.5f, -0.5f, 0.5f),
+        glm::vec3(-0.5f, -0.5f, -0.5f),
+        glm::vec3(-0.5f, 0.5f, -0.5f),
+
+        glm::vec3(-0.5f, 0.5f, -0.5f),
+        glm::vec3(-0.5f, 0.5f, 0.5f),
+        glm::vec3(-0.5f, -0.5f, 0.5f)
+    },
+    {
+        glm::vec3(0.5f, -0.5f, -0.5f),
+        glm::vec3(0.5f, -0.5f, 0.5f),
+        glm::vec3(0.5f, 0.5f, 0.5f),
+
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        glm::vec3(0.5f, 0.5f, -0.5f),
+        glm::vec3(0.5f, -0.5f, -0.5f)
+    },
+    {
+        glm::vec3(0.5f, -0.5f, 0.5f),
+        glm::vec3(-0.5f, -0.5f, 0.5f),
+        glm::vec3(-0.5f, 0.5f, 0.5f),
+
+        glm::vec3(-0.5f, 0.5f, 0.5f),
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        glm::vec3(0.5f, -0.5f, 0.5f)
+    },
+    {
+        glm::vec3(-0.5f, -0.5f, -0.5f),
+        glm::vec3(0.5f, -0.5f, -0.5f),
+        glm::vec3(0.5f, 0.5f, -0.5f),
+
+        glm::vec3(0.5f, 0.5f, -0.5f),
+        glm::vec3(-0.5f, 0.5f, -0.5f),
+        glm::vec3(-0.5f, -0.5f, -0.5f)
+    },
+    {
+        glm::vec3(-0.5f, 0.5f, -0.5f),
+        glm::vec3(0.5f, 0.5f, -0.5f),
+        glm::vec3(0.5f, 0.5f, 0.5f),
+
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        glm::vec3(-0.5f, 0.5f, 0.5f),
+        glm::vec3(-0.5f, 0.5f, -0.5f)
+    },
+    {
+        glm::vec3(0.5f, -0.5f, -0.5f),
+        glm::vec3(-0.5f, -0.5f, -0.5f),
+        glm::vec3(-0.5f, -0.5f, 0.5f),
+
+        glm::vec3(-0.5f, -0.5f, 0.5f),
+        glm::vec3(0.5f, -0.5f, 0.5f),
+        glm::vec3(0.5f, -0.5f, -0.5f)
+    },
+};
+
+std::vector<glm::ivec3> BLOCK_NEIGHBORS = {
+    glm::ivec3(-1, 0, 0),
+    glm::ivec3(1, 0, 0),
+    glm::ivec3(0, 0, 1),
+    glm::ivec3(0, 0, -1),
+    glm::ivec3(0, 1, 0),
+    glm::ivec3(0, -1, 0)
+};
+
+bool has_block(int x, int y, int z) {
+    if(noise_wrap(x,z) >= y) {
+        return true;
+    }
+    return false;
+}
+
+bool has_block(glm::ivec3 &i) {
+    if(noise_wrap(i.x, i.z) >= i.y) {
+        return true;
+    }
+    return false;
+}
+
+
+void BlockChunk::rebuild() {
+
+    std::vector<GLfloat> verts;
+    std::vector<GLfloat> uvs;
+
+    for(int i = -BLOCKCHUNKWIDTH/2; i < BLOCKCHUNKWIDTH/2; ++i) {
+        for(int k = -BLOCKCHUNKWIDTH/2; k < BLOCKCHUNKWIDTH/2; ++k) {
+            glm::ivec3 worldpos = glm::ivec3(i + this->position.x*BLOCKCHUNKWIDTH, 0, k + this->position.y*BLOCKCHUNKWIDTH);
+            for(int j = -20; j < noise_wrap(worldpos.x, worldpos.z); ++j) {
+                worldpos.y = j;
+                
+                int index = 0;
+                for(auto &p : BLOCK_NEIGHBORS) {
+                    if(!has_block(worldpos + p)) {
+                        for(auto &v : faces[index]) {
+                            glm::vec3 vert = glm::vec3(worldpos) + v;
+                            verts.insert(verts.end(), {
+                                vert.x, vert.y, vert.z
+                            });
+                        }
+                        TextureFace &face = noise_wrap(worldpos.x, worldpos.z) > 6 ? BlockTextures[BlockTypes::STONE] : BlockTextures[BlockTypes::GRASS];
+                        uvs.insert(uvs.end(), {
+                            face.bl.x, face.bl.y,
+                            face.tl.x, face.tl.y,
+                            face.tr.x, face.tr.y,
+
+                            face.tr.x, face.tr.y,
+                            face.br.x, face.br.y,
+                            face.bl.x, face.bl.y
+                        });
+                    }
+                    index++;
+                }
+
+            }
+        }
+    }
+    bool found = false;
+    for(auto &c : chunks_to_rebuild) {
+        if(c.me == this->me) {
+            found = true;
+        }
+    }
+    if(!found) {
+        NUGGO_POOL[this->nuggo_pool_index].verts = verts;
+        NUGGO_POOL[this->nuggo_pool_index].uvs = uvs;
+        chunks_to_rebuild.push_back(NUGGO_POOL[nuggo_pool_index]);
+    }
+
+
+
+}
+
 
 void grid(int xstride, int zstride, float step, glm::vec3 center, std::function<void(float,float,float)> func) {
     for(float i = center.x - xstride/2; i < center.x + xstride/2; i+=step)
@@ -135,9 +359,36 @@ void grid(int xstride, int zstride, float step, glm::vec3 center, std::function<
 }
 
 float noise_wrap(float x, float z) {
-    float divider = 20.3f;
-    float multiplier = 20.0f;
+    float divider = 50.3f;
+    float multiplier = 30.0f;
     return static_cast<float>(p.noise(x/divider, z/divider)) * multiplier;
+}
+
+#define LOAD_AFTER_DISTANCE 5
+
+#define CHUNK_LOAD_RADIUS 5
+
+
+
+
+void chunk_thread() {
+    glm::ivec3 last_cam_pos_divided;
+    while(!glfwWindowShouldClose(WINDOW)) {
+        glm::ivec3 curr_cam_divided = glm::ivec3(CAMERA_POSITION)/10;
+        if(curr_cam_divided != last_cam_pos_divided) {
+            last_cam_pos_divided = curr_cam_divided;
+            int index = 0;
+            for(int i = -CHUNK_LOAD_RADIUS; i < CHUNK_LOAD_RADIUS; ++i) {
+                for(int k = -CHUNK_LOAD_RADIUS; k < CHUNK_LOAD_RADIUS; ++k) {
+                    glm::ivec3 worldcampos(CAMERA_POSITION/static_cast<float>(BLOCKCHUNKWIDTH));
+                    glm::ivec2 newchunkpos(worldcampos.x+i, worldcampos.z+k);
+                    CHUNKS[index].move_to(newchunkpos);
+                    CHUNKS[index].rebuild();
+                    index++;
+                }
+            }
+        }
+    }
 }
 
 
@@ -151,26 +402,125 @@ int main() {
         return EXIT_FAILURE;
     }
     if(!create_shader_program(
-        &SHADER_1, 
-        "src/assets/vertex.glsl", 
-        "src/assets/fragment.glsl")) {
-        std::cerr << "Create SHADER_1 err" << std::endl;
+        &SHADER_FAR, 
+        "src/assets/farshader/vertex.glsl", 
+        "src/assets/farshader/fragment.glsl")) {
+        std::cerr << "Create SHADER_FAR err" << std::endl;
+        return EXIT_FAILURE;
+    }
+    if(!create_shader_program(
+        &SHADER_STANDARD, 
+        "src/assets/shader/vertex.glsl", 
+        "src/assets/shader/fragment.glsl")) {
+        std::cerr << "Create SHADER_FAR err" << std::endl;
         return EXIT_FAILURE;
     }
     init_imgui();
 
-    TextureFace stone(0,0);
 
     //1 vao and shader for now
     glGenVertexArrays(1, &VERTEX_ARRAY_OBJECT);
     glBindVertexArray(VERTEX_ARRAY_OBJECT);
-    glUseProgram(SHADER_1);
+    
+
+
+
+    //SPAWN CHUNKS
+
+    for(int i = -CHUNK_LOAD_RADIUS; i < CHUNK_LOAD_RADIUS; ++i) {
+        for(int k = -CHUNK_LOAD_RADIUS; k < CHUNK_LOAD_RADIUS; ++k) {
+            BlockChunk b;
+            b.move_to(glm::ivec2(i, k));
+            b.rebuild();
+            CHUNKS.push_back(b);
+        }
+    }
+
+    //START THREAD TO REBUILD THEM
+
+    std::thread ct(chunk_thread);
+    ct.detach();
+
+
+    
+
+    auto meshes_view = REGISTRY.view<MeshComponent>();
+
+                    
 
     while(!glfwWindowShouldClose(WINDOW)) {
         react_to_input();
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        send_shader_1_uniforms();
+
+
+        
+                    glUseProgram(SHADER_STANDARD);
+
+                    send_SHADER_STANDARD_uniforms();
+
+
+                    if(chunks_to_rebuild.size() > 0) {
+                        Nuggo &n = chunks_to_rebuild.back();
+                            if (!REGISTRY.all_of<MeshComponent>(n.me))
+                            {
+                                //std::cout << "You dont have a mesh component" << std::endl;
+                                MeshComponent m;
+                                m.length = n.verts.size();
+                                bind_geometry(
+                                    m.vbov,
+                                    m.vbouv,
+                                    n.verts.data(),
+                                    n.uvs.data(),
+                                    n.verts.size() * sizeof(GLfloat),
+                                    n.uvs.size() * sizeof(GLfloat),
+                                    SHADER_STANDARD
+                                );
+                                REGISTRY.emplace<MeshComponent>(n.me, m);
+                            }
+                            else {
+                                //std::cout << "You have a mesh component" << std::endl;
+                                MeshComponent& m = REGISTRY.get<MeshComponent>(n.me);
+
+                                glDeleteBuffers(1, &m.vbov);
+                                glDeleteBuffers(1, &m.vbouv);
+                                glGenBuffers(1, &m.vbov);
+                                glGenBuffers(1, &m.vbouv);
+
+                                m.length = n.verts.size();
+                                bind_geometry(
+                                    m.vbov,
+                                    m.vbouv,
+                                    n.verts.data(),
+                                    n.uvs.data(),
+                                    n.verts.size() * sizeof(GLfloat),
+                                    n.uvs.size() * sizeof(GLfloat),
+                                    SHADER_STANDARD
+                                );
+                            }
+                        chunks_to_rebuild.pop_back();
+                    }
+
+
+
+
+
+
+                    for (const entt::entity entity : meshes_view)
+                    {
+                        MeshComponent& m = REGISTRY.get<MeshComponent>(entity);
+                        bind_geometry_no_upload(
+                            m.vbov,
+                            m.vbouv,
+                            SHADER_STANDARD);
+
+                        glDrawArrays(GL_TRIANGLES, 0, m.length);
+
+                    }
+
+                    glUseProgram(SHADER_FAR);
+
+        send_SHADER_FAR_uniforms();
 
                     static GLuint vbov = 0;
                     static GLuint vbouv = 0;
@@ -179,25 +529,34 @@ int main() {
                     std::vector<GLfloat> verts;
                     std::vector<GLfloat> uvs;
 
-                    grid(120, 120, 5, CAMERA_POSITION, [&verts, &uvs, &stone](float i, float k, float step){
+                    grid(300, 300, 5, CAMERA_POSITION, [&verts, &uvs](float i, float k, float step){
                          verts.insert(verts.end(), {
-                                i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f) ,k-step/2.0f,
-                                i-step/2.0f, noise_wrap(i-step/2.0f, k+step/2.0f) ,k+step/2.0f,
-                                i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f) ,k+step/2.0f,
 
-                                i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f) ,k+step/2.0f,
-                                i+step/2.0f, noise_wrap(i+step/2.0f, k-step/2.0f) ,k-step/2.0f,
-                                i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f) ,k-step/2.0f,
+                            i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f) ,k-step/2.0f,
+                            i+step/2.0f, noise_wrap(i+step/2.0f, k-step/2.0f) ,k-step/2.0f,
+                            i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f) ,k+step/2.0f,
+                            i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f) ,k+step/2.0f,
+                            i-step/2.0f, noise_wrap(i-step/2.0f, k+step/2.0f) ,k+step/2.0f,
+                            i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f) ,k-step/2.0f,
+
+                                
+                                
+                                
+                                
+                                
+                                
                             });
 
-                            uvs.insert(uvs.end(), {
-                                stone.bl.x, stone.bl.y,
-                                stone.tl.x, stone.tl.y,
-                                stone.tr.x, stone.tr.y,
+                            TextureFace &face = noise_wrap(i,k) > 6 ? BlockTextures[BlockTypes::STONE] : BlockTextures[BlockTypes::GRASS];
 
-                                stone.tr.x, stone.tr.y,
-                                stone.br.x, stone.br.y,
-                                stone.bl.x, stone.bl.y
+                            uvs.insert(uvs.end(), {
+                                face.bl.x, face.bl.y,
+                                face.tl.x, face.tl.y,
+                                face.tr.x, face.tr.y,
+
+                                face.tr.x, face.tr.y,
+                                face.br.x, face.br.y,
+                                face.bl.x, face.bl.y
                             });
                     });
 
@@ -205,7 +564,8 @@ int main() {
 
 
 
-                    if(vbov == 0 || last_cam_pos != CAMERA_POSITION) {
+
+                    if(vbov == 0 || glm::ivec3(last_cam_pos) != glm::ivec3(CAMERA_POSITION)) {
                         last_cam_pos = CAMERA_POSITION;
                         glDeleteBuffers(1, &vbov);
                         glDeleteBuffers(1, &vbouv);
@@ -216,12 +576,18 @@ int main() {
                         vbov, vbouv, 
                         verts.data(), uvs.data(), 
                         verts.size()*sizeof(GLfloat),
-                        uvs.size()*sizeof(GLfloat));
+                        uvs.size()*sizeof(GLfloat),
+                        SHADER_FAR);
                     } else {
-                        bind_geometry_no_upload(vbov, vbouv);
+                        bind_geometry_no_upload(vbov, vbouv, SHADER_FAR);
                     }
 
                     glDrawArrays(GL_TRIANGLES, 0, verts.size());
+
+
+
+
+
                     glBindVertexArray(0);
 
 
@@ -240,8 +606,33 @@ int main() {
 }
 
 void react_to_input() {
+    bool recalc = false;
     if(INPUT_FORWARD) {
-        CAMERA_POSITION += CAMERA_DIRECTION * (0.001f + static_cast<float>(DELTA_TIME));
+        CAMERA_POSITION += CAMERA_DIRECTION * (0.001f + static_cast<float>(DELTA_TIME)) * SPEED_MULTIPLIER;
+        recalc = true;
+    }
+    if(INPUT_LEFT) {
+        CAMERA_POSITION += (-1.0f*CAMERA_RIGHT) * (0.001f + static_cast<float>(DELTA_TIME)) * SPEED_MULTIPLIER;
+        recalc = true;
+    }
+    if(INPUT_RIGHT) {
+        CAMERA_POSITION += CAMERA_RIGHT * (0.001f + static_cast<float>(DELTA_TIME)) * SPEED_MULTIPLIER;
+        recalc = true;
+    }
+    if(INPUT_BACK) {
+        CAMERA_POSITION -= CAMERA_DIRECTION * (0.001f + static_cast<float>(DELTA_TIME)) * SPEED_MULTIPLIER;
+        recalc = true;
+    }
+    if(INPUT_JUMP) {
+        CAMERA_POSITION += UP * (0.001f + static_cast<float>(DELTA_TIME)) * SPEED_MULTIPLIER;
+        recalc = true;
+    }
+    if(INPUT_SHIFT) {
+        CAMERA_POSITION -= UP * (0.001f + static_cast<float>(DELTA_TIME)) * SPEED_MULTIPLIER;
+        recalc = true;
+    }
+
+    if(recalc) {
         VIEW = glm::lookAt(CAMERA_POSITION, CAMERA_POSITION + CAMERA_DIRECTION, CAMERA_UP);
         MVP = PROJECTION * VIEW * MODEL;
     }
@@ -266,6 +657,7 @@ void rend_imgui() {
     ImGui::InputTextMultiline("Text Test", buf, 512, ImVec2(300, 100));
 
     ImGui::SliderFloat("Brightness", &GLOBAL_BRIGHTNESS, 0.0f, 1.0f);
+    ImGui::SliderFloat("Speed", &SPEED_MULTIPLIER, 1.0f, 20.0f);
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -292,16 +684,28 @@ void update_time() {
     LAST_FRAME = current_frame;
 }
 
-void send_shader_1_uniforms() {
-    GLuint mvp_loc = glGetUniformLocation(SHADER_1, "mvp");
+void send_SHADER_FAR_uniforms() {
+    GLuint mvp_loc = glGetUniformLocation(SHADER_FAR, "mvp");
     glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(MVP));
 
-    GLuint cam_pos_loc = glGetUniformLocation(SHADER_1, "camPos");
+    GLuint cam_pos_loc = glGetUniformLocation(SHADER_FAR, "camPos");
     glUniform3f(cam_pos_loc, CAMERA_POSITION.x, CAMERA_POSITION.y, CAMERA_POSITION.z);
 
-    GLuint brightness_loc = glGetUniformLocation(SHADER_1, "brightness");
+    GLuint brightness_loc = glGetUniformLocation(SHADER_FAR, "brightness");
     glUniform1f(brightness_loc, GLOBAL_BRIGHTNESS);
 }
+
+void send_SHADER_STANDARD_uniforms() {
+    GLuint mvp_loc = glGetUniformLocation(SHADER_STANDARD, "mvp");
+    glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(MVP));
+
+    GLuint cam_pos_loc = glGetUniformLocation(SHADER_STANDARD, "camPos");
+    glUniform3f(cam_pos_loc, CAMERA_POSITION.x, CAMERA_POSITION.y, CAMERA_POSITION.z);
+
+    GLuint brightness_loc = glGetUniformLocation(SHADER_STANDARD, "brightness");
+    glUniform1f(brightness_loc, GLOBAL_BRIGHTNESS);
+}
+
 
 
 void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
@@ -471,7 +875,7 @@ int create_window(const char *title) {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ZERO);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glCullFace(GL_BACK);
     glFrontFace(FACE_WINDING);
     glDepthFunc(GL_LESS);
@@ -505,7 +909,7 @@ int prepare_texture(GLuint *tptr, const char *tpath)
     return -1;
 }
 
-void bind_geometry(GLuint vbov, GLuint vbouv, const GLfloat *vertices, const GLfloat *uv, size_t vsize, size_t usize)
+void bind_geometry(GLuint vbov, GLuint vbouv, const GLfloat *vertices, const GLfloat *uv, size_t vsize, size_t usize, GLuint SHADER)
 {
     GLenum error;
     glBindBuffer(GL_ARRAY_BUFFER, vbov);
@@ -515,7 +919,7 @@ void bind_geometry(GLuint vbov, GLuint vbouv, const GLfloat *vertices, const GLf
     {
         std::cerr << "Bind geom err (vbov): " << error << std::endl;
     }
-    GLint pos_attrib = glGetAttribLocation(SHADER_1, "position");
+    GLint pos_attrib = glGetAttribLocation(SHADER, "position");
     glEnableVertexAttribArray(pos_attrib);
     glVertexAttribPointer(pos_attrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
@@ -526,20 +930,20 @@ void bind_geometry(GLuint vbov, GLuint vbouv, const GLfloat *vertices, const GLf
     {
         std::cerr << "Bind geom err (vbouv): " << error << std::endl;
     }
-    GLint uv_attrib = glGetAttribLocation(SHADER_1, "uv");
+    GLint uv_attrib = glGetAttribLocation(SHADER,"uv");
     glEnableVertexAttribArray(uv_attrib);
     glVertexAttribPointer(uv_attrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
 }
 
-void bind_geometry_no_upload(GLuint vbov, GLuint vbouv)
+void bind_geometry_no_upload(GLuint vbov, GLuint vbouv, GLuint SHADER)
 {
     glBindBuffer(GL_ARRAY_BUFFER, vbov);
-    GLint pos_attrib = glGetAttribLocation(SHADER_1, "position");
+    GLint pos_attrib = glGetAttribLocation(SHADER, "position");
     glEnableVertexAttribArray(pos_attrib);
     glVertexAttribPointer(pos_attrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbouv);
-    GLint uv_attrib = glGetAttribLocation(SHADER_1, "uv");
+    GLint uv_attrib = glGetAttribLocation(SHADER, "uv");
     glEnableVertexAttribArray(uv_attrib);
     glVertexAttribPointer(uv_attrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
 }
@@ -554,6 +958,6 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
         0.01f, 
         1000.0f);
     MVP = PROJECTION * VIEW * MODEL;
-    GLuint mvp_loc = glGetUniformLocation(SHADER_1, "mvp");
+    GLuint mvp_loc = glGetUniformLocation(SHADER_FAR, "mvp");
     glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(MVP));
 }
