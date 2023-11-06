@@ -25,7 +25,7 @@
 
 #include <entt/entt.hpp>
 #include <thread>
-
+#include <mutex>
 
 
 enum GameState {
@@ -183,6 +183,7 @@ public:
 };
 
 std::vector<Nuggo> chunks_to_rebuild;
+std::mutex CTR_MUTEX;
 
 
 std::vector<Nuggo> NUGGO_POOL;
@@ -361,7 +362,11 @@ void grid(int xstride, int zstride, float step, glm::vec3 center, std::function<
 float noise_wrap(float x, float z) {
     float divider = 50.3f;
     float multiplier = 30.0f;
-    return static_cast<float>(p.noise(x/divider, z/divider)) * multiplier;
+    
+    float biggermult = 3.0f;
+
+    float onoise = static_cast<float>(p.noise(x/(divider*biggermult), z/(divider*biggermult))) * (multiplier*biggermult);
+    return (static_cast<float>(p.noise(x/divider, z/divider)) * multiplier) + onoise;
 }
 
 #define LOAD_AFTER_DISTANCE 5
@@ -378,6 +383,8 @@ void chunk_thread() {
         if(curr_cam_divided != last_cam_pos_divided) {
             last_cam_pos_divided = curr_cam_divided;
             int index = 0;
+            CTR_MUTEX.lock();
+            chunks_to_rebuild.clear();
             for(int i = -CHUNK_LOAD_RADIUS; i < CHUNK_LOAD_RADIUS; ++i) {
                 for(int k = -CHUNK_LOAD_RADIUS; k < CHUNK_LOAD_RADIUS; ++k) {
                     glm::ivec3 worldcampos(CAMERA_POSITION/static_cast<float>(BLOCKCHUNKWIDTH));
@@ -387,6 +394,7 @@ void chunk_thread() {
                     index++;
                 }
             }
+            CTR_MUTEX.unlock();
         }
     }
 }
@@ -461,6 +469,7 @@ int main() {
 
 
                     if(chunks_to_rebuild.size() > 0) {
+                        if (CTR_MUTEX.try_lock()) {
                         Nuggo &n = chunks_to_rebuild.back();
                             if (!REGISTRY.all_of<MeshComponent>(n.me))
                             {
@@ -499,6 +508,8 @@ int main() {
                                 );
                             }
                         chunks_to_rebuild.pop_back();
+                        CTR_MUTEX.unlock();
+                        }
                     }
 
 
@@ -529,15 +540,15 @@ int main() {
                     std::vector<GLfloat> verts;
                     std::vector<GLfloat> uvs;
 
-                    grid(300, 300, 5, CAMERA_POSITION, [&verts, &uvs](float i, float k, float step){
+                    grid(400, 400, 5, CAMERA_POSITION, [&verts, &uvs](float i, float k, float step){
                          verts.insert(verts.end(), {
 
-                            i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f) ,k-step/2.0f,
-                            i+step/2.0f, noise_wrap(i+step/2.0f, k-step/2.0f) ,k-step/2.0f,
-                            i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f) ,k+step/2.0f,
-                            i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f) ,k+step/2.0f,
-                            i-step/2.0f, noise_wrap(i-step/2.0f, k+step/2.0f) ,k+step/2.0f,
-                            i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f) ,k-step/2.0f,
+                            i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+1.0f ,k-step/2.0f,
+                            i+step/2.0f, noise_wrap(i+step/2.0f, k-step/2.0f)+1.0f ,k-step/2.0f,
+                            i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f)+1.0f ,k+step/2.0f,
+                            i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f)+1.0f ,k+step/2.0f,
+                            i-step/2.0f, noise_wrap(i-step/2.0f, k+step/2.0f)+1.0f ,k+step/2.0f,
+                            i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+1.0f ,k-step/2.0f,
 
                                 
                                 
