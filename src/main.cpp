@@ -182,7 +182,7 @@ public:
     entt::entity me;
 };
 
-std::vector<Nuggo> chunks_to_rebuild;
+std::vector<int> chunks_to_rebuild;
 std::mutex CTR_MUTEX;
 
 
@@ -300,48 +300,78 @@ void BlockChunk::rebuild() {
     std::vector<GLfloat> verts;
     std::vector<GLfloat> uvs;
 
-    for(int i = -BLOCKCHUNKWIDTH/2; i < BLOCKCHUNKWIDTH/2; ++i) {
-        for(int k = -BLOCKCHUNKWIDTH/2; k < BLOCKCHUNKWIDTH/2; ++k) {
-            glm::ivec3 worldpos = glm::ivec3(i + this->position.x*BLOCKCHUNKWIDTH, 0, k + this->position.y*BLOCKCHUNKWIDTH);
-            for(int j = -20; j < noise_wrap(worldpos.x, worldpos.z); ++j) {
-                worldpos.y = j;
+    // for(int i = -BLOCKCHUNKWIDTH/2; i < BLOCKCHUNKWIDTH/2; ++i) {
+    //     for(int k = -BLOCKCHUNKWIDTH/2; k < BLOCKCHUNKWIDTH/2; ++k) {
+    //         glm::ivec3 worldpos = glm::ivec3(i + this->position.x*BLOCKCHUNKWIDTH, 0, k + this->position.y*BLOCKCHUNKWIDTH);
+            // for(int j = -100; j < noise_wrap(worldpos.x, worldpos.z); ++j) {
+            //     worldpos.y = j;
                 
-                int index = 0;
-                for(auto &p : BLOCK_NEIGHBORS) {
-                    if(!has_block(worldpos + p)) {
-                        for(auto &v : faces[index]) {
-                            glm::vec3 vert = glm::vec3(worldpos) + v;
-                            verts.insert(verts.end(), {
-                                vert.x, vert.y, vert.z
-                            });
-                        }
-                        TextureFace &face = noise_wrap(worldpos.x, worldpos.z) > 6 ? BlockTextures[BlockTypes::STONE] : BlockTextures[BlockTypes::GRASS];
-                        uvs.insert(uvs.end(), {
-                            face.bl.x, face.bl.y,
-                            face.tl.x, face.tl.y,
-                            face.tr.x, face.tr.y,
+            //     int index = 0;
+            //     for(auto &p : BLOCK_NEIGHBORS) {
+            //         if(!has_block(worldpos + p)) {
+            //             for(auto &v : faces[index]) {
+            //                 glm::vec3 vert = glm::vec3(worldpos) + v;
+            //                 verts.insert(verts.end(), {
+            //                     vert.x, vert.y, vert.z
+            //                 });
+            //             }
+            //             TextureFace &face = noise_wrap(worldpos.x, worldpos.z) > 6 ? BlockTextures[BlockTypes::STONE] : BlockTextures[BlockTypes::GRASS];
+            //             uvs.insert(uvs.end(), {
+            //                 face.bl.x, face.bl.y,
+            //                 face.tl.x, face.tl.y,
+            //                 face.tr.x, face.tr.y,
 
-                            face.tr.x, face.tr.y,
-                            face.br.x, face.br.y,
-                            face.bl.x, face.bl.y
-                        });
-                    }
-                    index++;
-                }
+            //                 face.tr.x, face.tr.y,
+            //                 face.br.x, face.br.y,
+            //                 face.bl.x, face.bl.y
+            //             });
+            //         }
+            //         index++;
+            //     }
 
-            }
-        }
-    }
+            // }
+
+    //     }
+    // }
+
+    float pushup = 0.0f;
+    grid(BLOCKCHUNKWIDTH, BLOCKCHUNKWIDTH, 1.0f, glm::vec3(position.x*BLOCKCHUNKWIDTH, 0, position.y*BLOCKCHUNKWIDTH), [&verts, &uvs, &pushup](float i, float k, float step){
+        verts.insert(verts.end(), {
+
+        i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup, k-step/2.0f,
+        i+step/2.0f, noise_wrap(i+step/2.0f, k-step/2.0f)+pushup, k-step/2.0f,
+        i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f)+pushup, k+step/2.0f,
+        i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f)+pushup, k+step/2.0f,
+        i-step/2.0f, noise_wrap(i-step/2.0f, k+step/2.0f)+pushup, k+step/2.0f,
+        i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup, k-step/2.0f,
+            
+        });
+
+        TextureFace &face = noise_wrap(i,k) > 6 ? BlockTextures[BlockTypes::STONE] : BlockTextures[BlockTypes::GRASS];
+
+        uvs.insert(uvs.end(), {
+            face.bl.x, face.bl.y,
+            face.tl.x, face.tl.y,
+            face.tr.x, face.tr.y,
+
+            face.tr.x, face.tr.y,
+            face.br.x, face.br.y,
+            face.bl.x, face.bl.y
+        });
+    });
+
+
+
     bool found = false;
-    for(auto &c : chunks_to_rebuild) {
-        if(c.me == this->me) {
+    for(auto c : chunks_to_rebuild) {
+        if(NUGGO_POOL[c].me == this->me) {
             found = true;
         }
     }
     if(!found) {
         NUGGO_POOL[this->nuggo_pool_index].verts = verts;
         NUGGO_POOL[this->nuggo_pool_index].uvs = uvs;
-        chunks_to_rebuild.push_back(NUGGO_POOL[nuggo_pool_index]);
+        chunks_to_rebuild.push_back(nuggo_pool_index);
     }
 
 
@@ -369,9 +399,9 @@ float noise_wrap(float x, float z) {
     return (static_cast<float>(p.noise(x/divider, z/divider)) * multiplier) + onoise;
 }
 
-#define LOAD_AFTER_DISTANCE 5
+#define LOAD_AFTER_DISTANCE 1
 
-#define CHUNK_LOAD_RADIUS 5
+#define CHUNK_LOAD_RADIUS 4
 
 
 
@@ -379,7 +409,7 @@ float noise_wrap(float x, float z) {
 void chunk_thread() {
     glm::ivec3 last_cam_pos_divided;
     while(!glfwWindowShouldClose(WINDOW)) {
-        glm::ivec3 curr_cam_divided = glm::ivec3(CAMERA_POSITION)/10;
+        glm::ivec3 curr_cam_divided = glm::ivec3(CAMERA_POSITION)/5;
         if(curr_cam_divided != last_cam_pos_divided) {
             last_cam_pos_divided = curr_cam_divided;
             int index = 0;
@@ -470,7 +500,7 @@ int main() {
 
                     if(chunks_to_rebuild.size() > 0) {
                         if (CTR_MUTEX.try_lock()) {
-                        Nuggo &n = chunks_to_rebuild.back();
+                        Nuggo &n = NUGGO_POOL[chunks_to_rebuild.back()];
                             if (!REGISTRY.all_of<MeshComponent>(n.me))
                             {
                                 //std::cout << "You dont have a mesh component" << std::endl;
@@ -539,16 +569,17 @@ int main() {
 
                     std::vector<GLfloat> verts;
                     std::vector<GLfloat> uvs;
+                    float pushup = 0.0f;
 
-                    grid(400, 400, 5, CAMERA_POSITION, [&verts, &uvs](float i, float k, float step){
+                    grid(400, 400, 5, CAMERA_POSITION, [&verts, &uvs, &pushup](float i, float k, float step){
                          verts.insert(verts.end(), {
 
-                            i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+1.0f ,k-step/2.0f,
-                            i+step/2.0f, noise_wrap(i+step/2.0f, k-step/2.0f)+1.0f ,k-step/2.0f,
-                            i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f)+1.0f ,k+step/2.0f,
-                            i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f)+1.0f ,k+step/2.0f,
-                            i-step/2.0f, noise_wrap(i-step/2.0f, k+step/2.0f)+1.0f ,k+step/2.0f,
-                            i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+1.0f ,k-step/2.0f,
+                            i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup ,k-step/2.0f,
+                            i+step/2.0f, noise_wrap(i+step/2.0f, k-step/2.0f)+pushup ,k-step/2.0f,
+                            i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f)+pushup ,k+step/2.0f,
+                            i+step/2.0f, noise_wrap(i+step/2.0f, k+step/2.0f)+pushup ,k+step/2.0f,
+                            i-step/2.0f, noise_wrap(i-step/2.0f, k+step/2.0f)+pushup ,k+step/2.0f,
+                            i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup ,k-step/2.0f,
 
                                 
                                 
@@ -623,11 +654,11 @@ void react_to_input() {
         recalc = true;
     }
     if(INPUT_LEFT) {
-        CAMERA_POSITION += (-1.0f*CAMERA_RIGHT) * (0.001f + static_cast<float>(DELTA_TIME)) * SPEED_MULTIPLIER;
+        CAMERA_POSITION -= (-1.0f*CAMERA_RIGHT) * (0.001f + static_cast<float>(DELTA_TIME)) * SPEED_MULTIPLIER;
         recalc = true;
     }
     if(INPUT_RIGHT) {
-        CAMERA_POSITION += CAMERA_RIGHT * (0.001f + static_cast<float>(DELTA_TIME)) * SPEED_MULTIPLIER;
+        CAMERA_POSITION -= CAMERA_RIGHT * (0.001f + static_cast<float>(DELTA_TIME)) * SPEED_MULTIPLIER;
         recalc = true;
     }
     if(INPUT_BACK) {
