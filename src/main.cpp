@@ -213,73 +213,6 @@ TextureFace BlockTextures[2] = {
     TextureFace(1,0)
 };
 
-const glm::vec3 faces[6][6] = {
-    
-    {
-        glm::vec3(-0.5f, -0.5f, 0.5f),
-        glm::vec3(-0.5f, -0.5f, -0.5f),
-        glm::vec3(-0.5f, 0.5f, -0.5f),
-
-        glm::vec3(-0.5f, 0.5f, -0.5f),
-        glm::vec3(-0.5f, 0.5f, 0.5f),
-        glm::vec3(-0.5f, -0.5f, 0.5f)
-    },
-    {
-        glm::vec3(0.5f, -0.5f, -0.5f),
-        glm::vec3(0.5f, -0.5f, 0.5f),
-        glm::vec3(0.5f, 0.5f, 0.5f),
-
-        glm::vec3(0.5f, 0.5f, 0.5f),
-        glm::vec3(0.5f, 0.5f, -0.5f),
-        glm::vec3(0.5f, -0.5f, -0.5f)
-    },
-    {
-        glm::vec3(0.5f, -0.5f, 0.5f),
-        glm::vec3(-0.5f, -0.5f, 0.5f),
-        glm::vec3(-0.5f, 0.5f, 0.5f),
-
-        glm::vec3(-0.5f, 0.5f, 0.5f),
-        glm::vec3(0.5f, 0.5f, 0.5f),
-        glm::vec3(0.5f, -0.5f, 0.5f)
-    },
-    {
-        glm::vec3(-0.5f, -0.5f, -0.5f),
-        glm::vec3(0.5f, -0.5f, -0.5f),
-        glm::vec3(0.5f, 0.5f, -0.5f),
-
-        glm::vec3(0.5f, 0.5f, -0.5f),
-        glm::vec3(-0.5f, 0.5f, -0.5f),
-        glm::vec3(-0.5f, -0.5f, -0.5f)
-    },
-    {
-        glm::vec3(-0.5f, 0.5f, -0.5f),
-        glm::vec3(0.5f, 0.5f, -0.5f),
-        glm::vec3(0.5f, 0.5f, 0.5f),
-
-        glm::vec3(0.5f, 0.5f, 0.5f),
-        glm::vec3(-0.5f, 0.5f, 0.5f),
-        glm::vec3(-0.5f, 0.5f, -0.5f)
-    },
-    {
-        glm::vec3(0.5f, -0.5f, -0.5f),
-        glm::vec3(-0.5f, -0.5f, -0.5f),
-        glm::vec3(-0.5f, -0.5f, 0.5f),
-
-        glm::vec3(-0.5f, -0.5f, 0.5f),
-        glm::vec3(0.5f, -0.5f, 0.5f),
-        glm::vec3(0.5f, -0.5f, -0.5f)
-    },
-};
-
-std::vector<glm::ivec3> BLOCK_NEIGHBORS = {
-    glm::ivec3(-1, 0, 0),
-    glm::ivec3(1, 0, 0),
-    glm::ivec3(0, 0, 1),
-    glm::ivec3(0, 0, -1),
-    glm::ivec3(0, 1, 0),
-    glm::ivec3(0, -1, 0)
-};
-
 bool has_block(int x, int y, int z) {
     if(noise_wrap(x,z) >= y) {
         return true;
@@ -299,40 +232,6 @@ void BlockChunk::rebuild() {
 
     std::vector<GLfloat> verts;
     std::vector<GLfloat> uvs;
-
-    // for(int i = -BLOCKCHUNKWIDTH/2; i < BLOCKCHUNKWIDTH/2; ++i) {
-    //     for(int k = -BLOCKCHUNKWIDTH/2; k < BLOCKCHUNKWIDTH/2; ++k) {
-    //         glm::ivec3 worldpos = glm::ivec3(i + this->position.x*BLOCKCHUNKWIDTH, 0, k + this->position.y*BLOCKCHUNKWIDTH);
-            // for(int j = -100; j < noise_wrap(worldpos.x, worldpos.z); ++j) {
-            //     worldpos.y = j;
-                
-            //     int index = 0;
-            //     for(auto &p : BLOCK_NEIGHBORS) {
-            //         if(!has_block(worldpos + p)) {
-            //             for(auto &v : faces[index]) {
-            //                 glm::vec3 vert = glm::vec3(worldpos) + v;
-            //                 verts.insert(verts.end(), {
-            //                     vert.x, vert.y, vert.z
-            //                 });
-            //             }
-            //             TextureFace &face = noise_wrap(worldpos.x, worldpos.z) > 6 ? BlockTextures[BlockTypes::STONE] : BlockTextures[BlockTypes::GRASS];
-            //             uvs.insert(uvs.end(), {
-            //                 face.bl.x, face.bl.y,
-            //                 face.tl.x, face.tl.y,
-            //                 face.tr.x, face.tr.y,
-
-            //                 face.tr.x, face.tr.y,
-            //                 face.br.x, face.br.y,
-            //                 face.bl.x, face.bl.y
-            //             });
-            //         }
-            //         index++;
-            //     }
-
-            // }
-
-    //     }
-    // }
 
     float pushup = 0.0f;
     grid(BLOCKCHUNKWIDTH, BLOCKCHUNKWIDTH, 1.0f, glm::vec3(position.x*BLOCKCHUNKWIDTH, 0, position.y*BLOCKCHUNKWIDTH), [&verts, &uvs, &pushup](float i, float k, float step){
