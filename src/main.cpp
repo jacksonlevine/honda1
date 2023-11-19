@@ -106,7 +106,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 int load_text (const char *fp, std::string &out);
 int create_window(const char *title);
 int create_shader_program(GLuint* prog, const char* vfp, const char* ffp);
-int attach_geometry_shader_to_shader_program(const char* gfilepath, GLuint* shaderprog);
+int create_shader_program_with_geometry_shader(GLuint* prog, const char* vfp, const char* ffp, const char* gfilepath);
 int prepare_texture(GLuint *tptr, const char *tpath);
 void send_SHADER_FAR_uniforms();
 void send_SHADER_STANDARD_uniforms();
@@ -356,17 +356,12 @@ int main() {
         std::cerr << "Create SHADER_STANDARD err" << std::endl;
         return EXIT_FAILURE;
     }
-    if(!create_shader_program(
+    if(!create_shader_program_with_geometry_shader(
         &SHADER_BILLBOARD, 
         "src/assets/billboardshader/vertex.glsl", 
-        "src/assets/billboardshader/fragment.glsl")) {
+        "src/assets/billboardshader/fragment.glsl",
+        "src/assets/billboardshader/geometry.glsl")) {
         std::cerr << "Create SHADER_BILLBOARD err" << std::endl;
-        return EXIT_FAILURE;
-    }
-    if(!attach_geometry_shader_to_shader_program(
-        "src/assets/billboardshader/geometry.glsl",
-        &SHADER_BILLBOARD)) {
-        std::cerr << "SHADER_BILLBOARD geometry shader compiler/attach err" << std::endl;
         return EXIT_FAILURE;
     }
     init_imgui();
@@ -527,38 +522,27 @@ int main() {
 
                             float billheight = 2.0f;
 
-                            if(static_cast<float>(rand()) / static_cast<float>(RAND_MAX) < 0.9f)
+                            if(static_cast<float>(rand()) / static_cast<float>(RAND_MAX) < 0.1f)
                             {
                                 TextureFace tree(2,0);
 
                                 billverts.insert(billverts.end(), {
-                                    i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup ,k,
-                                    i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup+billheight ,k,
-                                    i+step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup+billheight ,k,
-
-                                    i+step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup+billheight ,k,
-                                    i+step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup ,k,
-                                    i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup ,k
+                                    i, noise_wrap(i, k)+3.0f ,k,
                                 });
 
                                 billuvs.insert(billuvs.end(), {
-                                    tree.bl.x, tree.bl.y,
-                                    tree.tl.x, tree.tl.y,
-                                    tree.tr.x, tree.tr.y,
-
-                                    tree.tr.x, tree.tr.y,
-                                    tree.br.x, tree.br.y,
-                                    tree.bl.x, tree.bl.y
+                                    tree.tl.x, tree.tl.y
                                 });
                             }
                     });
 
 
+                    bool redrawBills = false;
 
 
 
-
-                    if(vbov == 0 || glm::ivec3(last_cam_pos) != glm::ivec3(CAMERA_POSITION)) {
+                    if(vbov == 0 || glm::ivec3(last_cam_pos)/BLOCKCHUNKWIDTH != glm::ivec3(CAMERA_POSITION)/BLOCKCHUNKWIDTH) {
+                        redrawBills = true;
                         last_cam_pos = CAMERA_POSITION;
                         glDeleteBuffers(1, &vbov);
                         glDeleteBuffers(1, &vbouv);
@@ -584,7 +568,7 @@ int main() {
 
                     send_SHADER_BILLBOARD_uniforms();
 
-                    if(billvbov == 0 || glm::ivec3(last_cam_pos) != glm::ivec3(CAMERA_POSITION)) {
+                    if(billvbov == 0 || redrawBills) {
                         last_cam_pos = CAMERA_POSITION;
                         glDeleteBuffers(1, &billvbov);
                         glDeleteBuffers(1, &billvbouv);
@@ -601,7 +585,7 @@ int main() {
                         bind_geometry_no_upload(billvbov, billvbouv, SHADER_BILLBOARD);
                     }
 
-                    glDrawArrays(GL_TRIANGLES, 0, billverts.size());
+                    glDrawArrays(GL_POINTS, 0, billverts.size());
 
 
                     glBindVertexArray(0);
@@ -826,19 +810,50 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
     }
 }
 
-int attach_geometry_shader_to_shader_program(const char* gfilepath, GLuint* shaderprog)
-{
+
+int create_shader_program_with_geometry_shader(GLuint* prog, const char* vfp, const char* ffp, const char* gfilepath) {
+
+std::string vertexText;
+    std::string fragText;
     std::string geometryText;
     if(!load_text(gfilepath, geometryText)) {
         std::cerr << "Missing/could not load geometry shade file from path:"
         << gfilepath << std::endl;
         return -1;
     }
+    if(!load_text(vfp, vertexText)) {
+        std::cerr << "Missing/could not load vert shade file" << std::endl;
+        return -1;
+    }
+    if(!load_text(ffp, fragText)) {
+        std::cerr << "Missing/could not load frag shade file" << std::endl;
+        return -1;
+    }
+    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
     GLuint geometryShader = glCreateShader(GL_GEOMETRY_SHADER);
+
+    const GLchar *vertexGLChars = vertexText.c_str();
+    const GLchar *fragGLChars = fragText.c_str();
     const GLchar* geometryShaderSource = geometryText.c_str();
+
+    glShaderSource(vertexShader, 1, &vertexGLChars, NULL);
+    glCompileShader(vertexShader);
+
     glShaderSource(geometryShader, 1, &geometryShaderSource, nullptr);
     glCompileShader(geometryShader);
-    int success;
+
+    glShaderSource(fragmentShader, 1, &fragGLChars, NULL);
+    glCompileShader(fragmentShader);
+
+    GLint success;
+    GLchar infoLog[512];
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
+        std::cerr << "Vert shade comp err: " << infoLog << std::endl;
+        return -1;
+    }
     glGetShaderiv(geometryShader, GL_COMPILE_STATUS, &success);
     if (!success) {
         char infoLog[512];
@@ -846,17 +861,29 @@ int attach_geometry_shader_to_shader_program(const char* gfilepath, GLuint* shad
         std::cerr << "ERROR: Geometry shader compilation failed\n" << infoLog << std::endl;
         return -1;
     }
-    glAttachShader(*shaderprog, geometryShader);
-    glLinkProgram(*shaderprog);
-    glGetProgramiv(*shaderprog, GL_LINK_STATUS, &success);
+    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
     if (!success) {
-        char infoLog[512];
-        glGetProgramInfoLog(*shaderprog, 512, nullptr, infoLog);
-        std::cerr << "ERROR: Program linking failed\n" << infoLog << std::endl;
+        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
+        std::cerr << "Frag shade comp err: " << infoLog << std::endl;
         return -1;
     }
+    *prog = glCreateProgram();
+    glAttachShader(*prog, vertexShader);
+    glAttachShader(*prog, geometryShader);
+    glAttachShader(*prog, fragmentShader);
+    glLinkProgram(*prog);
+    glGetProgramiv(*prog, GL_LINK_STATUS, &success);
+    if (!success) {
+        glGetProgramInfoLog(*prog, 512, NULL, infoLog);
+        std::cerr << "Shade prog link err: " << infoLog << std::endl;
+        return -1;
+    }
+    glDeleteShader(vertexShader);
     glDeleteShader(geometryShader);
+    glDeleteShader(fragmentShader);
+
     return 1;
+
 }
 
 int create_shader_program(GLuint* prog, const char* vfp, const char* ffp) {
