@@ -67,7 +67,7 @@ float SPEED_MULTIPLIER = 2.0f;
 
 //GENERAL FACTS
 glm::vec3 UP(0.0f, 1.0f, 0.0f);
-int FACE_WINDING = GL_CW; //Clockwise if you're looking at the shape.
+int FACE_WINDING = GL_CW; //Counter clockwise if you're looking at the shape.
 
 //TIME
 double DELTA_TIME = 0;
@@ -76,6 +76,7 @@ double LAST_FRAME = 0;
 //SHADERS
 GLuint SHADER_FAR;
 GLuint SHADER_STANDARD;
+GLuint SHADER_BILLBOARD;
 
 //TEXTURES
 GLuint TEXTURE_SHEET;
@@ -94,6 +95,7 @@ glm::mat4 PROJECTION(
         1000.0f));
 glm::mat4 VIEW(0.0f);
 glm::mat4 MVP(0.0f);
+glm::mat4 MODELVIEW(0.0f);
 
 //CALLBACKS FOR GL
 void mouse_callback(GLFWwindow *window, double xpos, double ypos);
@@ -104,9 +106,11 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 int load_text (const char *fp, std::string &out);
 int create_window(const char *title);
 int create_shader_program(GLuint* prog, const char* vfp, const char* ffp);
+int attach_geometry_shader_to_shader_program(const char* gfilepath, GLuint* shaderprog);
 int prepare_texture(GLuint *tptr, const char *tpath);
 void send_SHADER_FAR_uniforms();
 void send_SHADER_STANDARD_uniforms();
+void send_SHADER_BILLBOARD_uniforms();
 
 void update_time();
 void bind_geometry(GLuint vbov, GLuint vbouv, const GLfloat *vertices, const GLfloat *uv, size_t vsize, size_t usize, GLuint shader);
@@ -349,7 +353,20 @@ int main() {
         &SHADER_STANDARD, 
         "src/assets/shader/vertex.glsl", 
         "src/assets/shader/fragment.glsl")) {
-        std::cerr << "Create SHADER_FAR err" << std::endl;
+        std::cerr << "Create SHADER_STANDARD err" << std::endl;
+        return EXIT_FAILURE;
+    }
+    if(!create_shader_program(
+        &SHADER_BILLBOARD, 
+        "src/assets/billboardshader/vertex.glsl", 
+        "src/assets/billboardshader/fragment.glsl")) {
+        std::cerr << "Create SHADER_BILLBOARD err" << std::endl;
+        return EXIT_FAILURE;
+    }
+    if(!attach_geometry_shader_to_shader_program(
+        "src/assets/billboardshader/geometry.glsl",
+        &SHADER_BILLBOARD)) {
+        std::cerr << "SHADER_BILLBOARD geometry shader compiler/attach err" << std::endl;
         return EXIT_FAILURE;
     }
     init_imgui();
@@ -464,13 +481,21 @@ int main() {
 
                     static GLuint vbov = 0;
                     static GLuint vbouv = 0;
+
+                    static GLuint billvbov = 0;
+                    static GLuint billvbouv = 0;
+
                     static glm::vec3 last_cam_pos;
 
                     std::vector<GLfloat> verts;
                     std::vector<GLfloat> uvs;
+
+                    std::vector<GLfloat> billverts;
+                    std::vector<GLfloat> billuvs;
+
                     float pushup = 0.0f;
 
-                    grid(400, 400, 5, CAMERA_POSITION, [&verts, &uvs, &pushup](float i, float k, float step){
+                    grid(400, 400, 5, CAMERA_POSITION, [&billverts, &billuvs, &verts, &uvs, &pushup](float i, float k, float step){
                          verts.insert(verts.end(), {
 
                             i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup ,k-step/2.0f,
@@ -499,6 +524,33 @@ int main() {
                                 face.br.x, face.br.y,
                                 face.bl.x, face.bl.y
                             });
+
+                            float billheight = 2.0f;
+
+                            if(static_cast<float>(rand()) / static_cast<float>(RAND_MAX) < 0.9f)
+                            {
+                                TextureFace tree(2,0);
+
+                                billverts.insert(billverts.end(), {
+                                    i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup ,k,
+                                    i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup+billheight ,k,
+                                    i+step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup+billheight ,k,
+
+                                    i+step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup+billheight ,k,
+                                    i+step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup ,k,
+                                    i-step/2.0f, noise_wrap(i-step/2.0f, k-step/2.0f)+pushup ,k
+                                });
+
+                                billuvs.insert(billuvs.end(), {
+                                    tree.bl.x, tree.bl.y,
+                                    tree.tl.x, tree.tl.y,
+                                    tree.tr.x, tree.tr.y,
+
+                                    tree.tr.x, tree.tr.y,
+                                    tree.br.x, tree.br.y,
+                                    tree.bl.x, tree.bl.y
+                                });
+                            }
                     });
 
 
@@ -527,6 +579,29 @@ int main() {
 
 
 
+
+                    glUseProgram(SHADER_BILLBOARD);
+
+                    send_SHADER_BILLBOARD_uniforms();
+
+                    if(billvbov == 0 || glm::ivec3(last_cam_pos) != glm::ivec3(CAMERA_POSITION)) {
+                        last_cam_pos = CAMERA_POSITION;
+                        glDeleteBuffers(1, &billvbov);
+                        glDeleteBuffers(1, &billvbouv);
+                        glGenBuffers(1, &billvbov);
+                        glGenBuffers(1, &billvbouv);
+
+                        bind_geometry(
+                        billvbov, billvbouv, 
+                        billverts.data(), billuvs.data(), 
+                        billverts.size()*sizeof(GLfloat),
+                        billuvs.size()*sizeof(GLfloat),
+                        SHADER_BILLBOARD);
+                    } else {
+                        bind_geometry_no_upload(billvbov, billvbouv, SHADER_BILLBOARD);
+                    }
+
+                    glDrawArrays(GL_TRIANGLES, 0, billverts.size());
 
 
                     glBindVertexArray(0);
@@ -576,6 +651,7 @@ void react_to_input() {
     if(recalc) {
         VIEW = glm::lookAt(CAMERA_POSITION, CAMERA_POSITION + CAMERA_DIRECTION, CAMERA_UP);
         MVP = PROJECTION * VIEW * MODEL;
+        MODELVIEW = MODEL * VIEW;
     }
 }
 
@@ -647,6 +723,23 @@ void send_SHADER_STANDARD_uniforms() {
     glUniform1f(brightness_loc, GLOBAL_BRIGHTNESS);
 }
 
+void send_SHADER_BILLBOARD_uniforms() {
+    GLuint v_loc = glGetUniformLocation(SHADER_BILLBOARD, "v");
+    glUniformMatrix4fv(v_loc, 1, GL_FALSE, glm::value_ptr(VIEW));
+
+    GLuint p_loc = glGetUniformLocation(SHADER_BILLBOARD, "p");
+    glUniformMatrix4fv(p_loc, 1, GL_FALSE, glm::value_ptr(PROJECTION));
+
+    GLuint m_loc = glGetUniformLocation(SHADER_BILLBOARD, "m");
+    glUniformMatrix4fv(m_loc, 1, GL_FALSE, glm::value_ptr(MODEL));
+
+    GLuint cam_pos_loc = glGetUniformLocation(SHADER_BILLBOARD, "camPos");
+    glUniform3f(cam_pos_loc, CAMERA_POSITION.x, CAMERA_POSITION.y, CAMERA_POSITION.z);
+
+    GLuint brightness_loc = glGetUniformLocation(SHADER_BILLBOARD, "brightness");
+    glUniform1f(brightness_loc, GLOBAL_BRIGHTNESS);
+}
+
 
 
 void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
@@ -687,6 +780,7 @@ void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
         VIEW = glm::lookAt(CAMERA_POSITION, CAMERA_POSITION + CAMERA_DIRECTION, CAMERA_UP);
 
         MVP = PROJECTION * VIEW * MODEL;
+        MODELVIEW = MODEL * VIEW;
     }
 }
 
@@ -730,6 +824,39 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
         FIRST_MOUSE = true;
         MOUSE_CAPTURED = false;
     }
+}
+
+int attach_geometry_shader_to_shader_program(const char* gfilepath, GLuint* shaderprog)
+{
+    std::string geometryText;
+    if(!load_text(gfilepath, geometryText)) {
+        std::cerr << "Missing/could not load geometry shade file from path:"
+        << gfilepath << std::endl;
+        return -1;
+    }
+    GLuint geometryShader = glCreateShader(GL_GEOMETRY_SHADER);
+    const GLchar* geometryShaderSource = geometryText.c_str();
+    glShaderSource(geometryShader, 1, &geometryShaderSource, nullptr);
+    glCompileShader(geometryShader);
+    int success;
+    glGetShaderiv(geometryShader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetShaderInfoLog(geometryShader, 512, nullptr, infoLog);
+        std::cerr << "ERROR: Geometry shader compilation failed\n" << infoLog << std::endl;
+        return -1;
+    }
+    glAttachShader(*shaderprog, geometryShader);
+    glLinkProgram(*shaderprog);
+    glGetProgramiv(*shaderprog, GL_LINK_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetProgramInfoLog(*shaderprog, 512, nullptr, infoLog);
+        std::cerr << "ERROR: Program linking failed\n" << infoLog << std::endl;
+        return -1;
+    }
+    glDeleteShader(geometryShader);
+    return 1;
 }
 
 int create_shader_program(GLuint* prog, const char* vfp, const char* ffp) {
@@ -899,6 +1026,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
         0.01f, 
         1000.0f);
     MVP = PROJECTION * VIEW * MODEL;
-    GLuint mvp_loc = glGetUniformLocation(SHADER_FAR, "mvp");
-    glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(MVP));
+    //MODELVIEW = MODEL * VIEW;
+    //GLuint mvp_loc = glGetUniformLocation(SHADER_FAR, "mvp");
+    //glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(MVP));
 }
