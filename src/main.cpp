@@ -531,7 +531,7 @@ int main() {
 
                             
 
-                            if(static_cast<float>(rand()) / static_cast<float>(RAND_MAX) < 3.0f)
+                            if(static_cast<float>(rand()) / static_cast<float>(RAND_MAX) < 0.3f)
                             {
                                 TextureFace tree(2,0);
 
@@ -557,7 +557,7 @@ int main() {
                         3.0f, -3.0f, 0.0f, 1.0f,  // Corner 1
                         3.0f,  3.0f, 0.0f, 2.0f,  // Corner 2
                         -3.0f,  3.0f, 0.0f, 3.0f   // Corner 3
-                    };
+                    }; 
 
                     if(vbov == 0 || glm::ivec3(last_cam_pos)/BLOCKCHUNKWIDTH != glm::ivec3(CAMERA_POSITION)/BLOCKCHUNKWIDTH) {
                         redrawBills = true;
@@ -601,14 +601,14 @@ int main() {
                         glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
 
                         // Vertex position attribute
-                            GLint posAttrib = glGetAttribLocation(SHADER_BILLBOARD, "vertexPosition");
-                            glEnableVertexAttribArray(posAttrib);
-                            glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)0);
+                        GLint posAttrib = glGetAttribLocation(SHADER_BILLBOARD, "vertexPosition");
+                        glEnableVertexAttribArray(posAttrib);
+                        glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)0);
 
-                            // Corner ID attribute
-                            GLint cornerAttrib = glGetAttribLocation(SHADER_BILLBOARD, "cornerID");
-                            glEnableVertexAttribArray(cornerAttrib);
-                            glVertexAttribPointer(cornerAttrib, 1, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
+                        // Corner ID attribute
+                        GLint cornerAttrib = glGetAttribLocation(SHADER_BILLBOARD, "cornerID");
+                        glEnableVertexAttribArray(cornerAttrib);
+                        glVertexAttribPointer(cornerAttrib, 1, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
 
                         // Instance positions
                         glBindBuffer(GL_ARRAY_BUFFER, billposvbo);
@@ -627,25 +627,25 @@ int main() {
 
                         GLint uv_attrib_base = glGetAttribLocation(SHADER_BILLBOARD, "instanceUV0");
 
-// First pair of UVs
-glEnableVertexAttribArray(uv_attrib_base);
-glVertexAttribPointer(uv_attrib_base, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)0);
-glVertexAttribDivisor(uv_attrib_base, 1);
+                        // First pair of UVs
+                        glEnableVertexAttribArray(uv_attrib_base);
+                        glVertexAttribPointer(uv_attrib_base, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)0);
+                        glVertexAttribDivisor(uv_attrib_base, 1);
 
-// Second pair of UVs
-glEnableVertexAttribArray(uv_attrib_base + 1);
-glVertexAttribPointer(uv_attrib_base + 1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
-glVertexAttribDivisor(uv_attrib_base + 1, 1);
+                        // Second pair of UVs
+                        glEnableVertexAttribArray(uv_attrib_base + 1);
+                        glVertexAttribPointer(uv_attrib_base + 1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
+                        glVertexAttribDivisor(uv_attrib_base + 1, 1);
 
-// Third pair of UVs
-glEnableVertexAttribArray(uv_attrib_base + 2);
-glVertexAttribPointer(uv_attrib_base + 2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(4 * sizeof(GLfloat)));
-glVertexAttribDivisor(uv_attrib_base + 2, 1);
+                        // Third pair of UVs
+                        glEnableVertexAttribArray(uv_attrib_base + 2);
+                        glVertexAttribPointer(uv_attrib_base + 2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(4 * sizeof(GLfloat)));
+                        glVertexAttribDivisor(uv_attrib_base + 2, 1);
 
-// Fourth pair of UVs
-glEnableVertexAttribArray(uv_attrib_base + 3);
-glVertexAttribPointer(uv_attrib_base + 3, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
-glVertexAttribDivisor(uv_attrib_base + 3, 1);
+                        // Fourth pair of UVs
+                        glEnableVertexAttribArray(uv_attrib_base + 3);
+                        glVertexAttribPointer(uv_attrib_base + 3, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
+                        glVertexAttribDivisor(uv_attrib_base + 3, 1);
 
 
                     } else {
@@ -680,25 +680,25 @@ glVertexAttribDivisor(uv_attrib_base + 3, 1);
 
                         GLint uv_attrib_base = glGetAttribLocation(SHADER_BILLBOARD, "instanceUV0");
 
-// First pair of UVs
-glEnableVertexAttribArray(uv_attrib_base);
-glVertexAttribPointer(uv_attrib_base, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)0);
-glVertexAttribDivisor(uv_attrib_base, 1);
+                        // First pair of UVs
+                        glEnableVertexAttribArray(uv_attrib_base);
+                        glVertexAttribPointer(uv_attrib_base, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)0);
+                        glVertexAttribDivisor(uv_attrib_base, 1);
 
-// Second pair of UVs
-glEnableVertexAttribArray(uv_attrib_base + 1);
-glVertexAttribPointer(uv_attrib_base + 1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
-glVertexAttribDivisor(uv_attrib_base + 1, 1);
+                        // Second pair of UVs
+                        glEnableVertexAttribArray(uv_attrib_base + 1);
+                        glVertexAttribPointer(uv_attrib_base + 1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
+                        glVertexAttribDivisor(uv_attrib_base + 1, 1);
 
-// Third pair of UVs
-glEnableVertexAttribArray(uv_attrib_base + 2);
-glVertexAttribPointer(uv_attrib_base + 2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(4 * sizeof(GLfloat)));
-glVertexAttribDivisor(uv_attrib_base + 2, 1);
+                        // Third pair of UVs
+                        glEnableVertexAttribArray(uv_attrib_base + 2);
+                        glVertexAttribPointer(uv_attrib_base + 2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(4 * sizeof(GLfloat)));
+                        glVertexAttribDivisor(uv_attrib_base + 2, 1);
 
-// Fourth pair of UVs
-glEnableVertexAttribArray(uv_attrib_base + 3);
-glVertexAttribPointer(uv_attrib_base + 3, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
-glVertexAttribDivisor(uv_attrib_base + 3, 1);
+                        // Fourth pair of UVs
+                        glEnableVertexAttribArray(uv_attrib_base + 3);
+                        glVertexAttribPointer(uv_attrib_base + 3, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
+                        glVertexAttribDivisor(uv_attrib_base + 3, 1);
                     }
 
                     glDrawArraysInstanced(GL_TRIANGLE_FAN, 0, 4, billinstances.size() / 3);
