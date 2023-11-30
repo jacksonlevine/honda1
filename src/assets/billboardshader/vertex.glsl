@@ -29,7 +29,8 @@ void main() {
 
     // Transform position to clip space
     gl_Position = p * v * m * vec4(billboardedPosition, 1.0);
-    
+    gl_Position.y -= pow(distance(camPos, instancePosition)*0.02, 3);
+
     // Selecting UV based on cornerID
     if (cornerID == 0.0) {
         TexCoord = instanceUV0;

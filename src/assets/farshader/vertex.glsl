@@ -5,9 +5,11 @@ out vec3 vertexColor;
 out vec2 TexCoord;
 out vec3 pos;
 uniform mat4 mvp;
+uniform vec3 camPos;
 void main()
 {
     gl_Position = mvp * vec4(position, 1.0);
+    gl_Position.y -= pow(distance(camPos, position)*0.02, 3);
     vertexColor = vec3(1.0, 1.0, 1.0);
     TexCoord = uv;
     pos = position;
